@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/terminal.svg" width="100%" alt="Terminal running fastfetch on Arch: a 3D ASCII penguin and polar bear spinning on an ice floe, next to a big LTH-A banner and some very honest system info" />
+  <img src="assets/terminal.svg" width="100%" alt="Hyprland desktop with a terminal running fastfetch on Arch: a 3D ASCII penguin and polar bear spinning on an ice floe, next to a big LTH-A banner and some very honest system info" />
 </p>
 
 <p align="center">

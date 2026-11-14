@@ -795,7 +795,7 @@ SH = BY + 24
 HOST = 'ШАТУН'
 
 # purple everything
-BG, BAR, LINE = '#120c1f', '#1b1230', '#2e2245'
+BG = '#120c1f'
 
 LOGO = [a + b + c + d + e for a, b, c, d, e in zip(
     ['██╗     ', '██║     ', '██║     ', '██║     ', '███████╗', '╚══════╝'],
@@ -926,6 +926,213 @@ def logo_svg(x0, y0, cw=8.4, ch=14.5):
     return svg, w, h
 
 
+# hyprland desktop around the terminal: wallpaper, floating waybar pills, bordered window
+TB = 30                                # old title bar strip, cut off the top of the terminal
+GAP, BW, RND = 12, 2, 10               # gaps, border width, rounding
+PY, PH, PG, BCW = 10, 26, 6, 7.2       # pill top, pill height, pill spacing, bar char width
+CPU = [12, 9, 17, 34, 23, 15, 8, 11]   # one sample per second
+WS = 'oaoee'                           # workspaces: occupied, active, empty
+
+
+def rrect(x, y, w, h, r):
+    return (f'M{num(x + r)} {num(y)}H{num(x + w - r)}A{r} {r} 0 0 1 {num(x + w)} {num(y + r)}'
+            f'V{num(y + h - r)}A{r} {r} 0 0 1 {num(x + w - r)} {num(y + h)}H{num(x + r)}'
+            f'A{r} {r} 0 0 1 {num(x)} {num(y + h - r)}V{num(y + r)}A{r} {r} 0 0 1 {num(x + r)} {num(y)}Z')
+
+
+def desktop(iw, ih, title):
+    tw, wy = iw + 2 * (BW + GAP), PY + PH + 10
+    th = wy + ih + 2 * BW + GAP
+    cy, by = PY + PH / 2, PY + 17
+
+    def txt(x, s, c=None):
+        xs = ' '.join(num(x + i * BCW) for i in range(len(s)))
+        return f'<text x="{xs}" y="{by}"' + (f' class="{c}"' if c else '') + f'>{esc(s)}</text>'
+
+    def arc(x, y, r, a0, a1):
+        p = [(x + r * math.sin(math.radians(a)), y - r * math.cos(math.radians(a))) for a in (a0, a1)]
+        big = 1 if (a1 - a0) % 360 > 180 else 0
+        return f'M{num(p[0][0])} {num(p[0][1])}A{r} {r} 0 {big} 1 {num(p[1][0])} {num(p[1][1])}'
+
+    # modules: (width, x -> markup)
+    def m_arch(x):
+        return (f'<path d="M{num(x + 7)} {num(cy - 7)}L{num(x + 14.5)} {num(cy + 6)}H{num(x - .5)}Z'
+                f'M{num(x + 7)} {num(cy - 1)}L{num(x + 10.4)} {num(cy + 4.6)}H{num(x + 3.6)}Z" '
+                f'fill="url(#ym)" fill-rule="evenodd"/>' + txt(x + 21, 'arch', 'ya'))
+
+    def m_ws(x):
+        out = []
+        for s in WS:
+            if s == 'a':
+                out.append(f'<rect class="yg" x="{num(x - 2)}" y="{num(cy - 6)}" width="26" height="12" rx="6" '
+                           f'fill="#c45cff" filter="url(#yu)"/>'
+                           f'<rect x="{num(x)}" y="{num(cy - 4)}" width="22" height="8" rx="4" fill="url(#ym)"/>')
+                x += 30
+            else:
+                out.append(f'<circle cx="{num(x + 3)}" cy="{num(cy)}" r="{3 if s == "o" else 2.6}" '
+                           + ('fill="#9d8cbf"/>' if s == 'o' else 'fill="none" stroke="#5c4a85" stroke-width="1.2"/>'))
+                x += 14
+        return ''.join(out)
+
+    def m_title(x):
+        k = x + 21 + 5 * BCW + 8
+        return (f'<rect x="{num(x + .7)}" y="{num(cy - 5.5)}" width="14" height="11" rx="2.5" fill="none" '
+                f'stroke="#b07cff" stroke-width="1.3"/>'
+                f'<path d="M{num(x + 3.6)} {num(cy - 2.4)}l2.6 2.4-2.6 2.4M{num(x + 7.6)} {num(cy + 2.6)}h3.6" '
+                f'fill="none" stroke="#e0a8ff" stroke-width="1.2" stroke-linecap="round"/>'
+                + txt(x + 21, 'kitty', 'ya')
+                + f'<path d="M{num(k)} {num(cy - 6)}v12" stroke="#3a2961"/>' + txt(k + 9, title))
+
+    def m_clock(x):
+        return (f'<path d="M{num(x + 6)} {num(cy - 6)}A6 6 0 1 0 {num(x + 11.6)} {num(cy + 2.2)}'
+                f'A4.8 4.8 0 0 1 {num(x + 6)} {num(cy - 6)}Z" fill="#e0a8ff"/>'
+                + txt(x + 19, '03 14', 'yk') + txt(x + 19 + 2 * BCW, ':', 'yk yc'))
+
+    sx, dx = 19, 4.5
+    pts = [(i * dx, cy + 6 - v / 40 * 12) for i, v in enumerate(CPU * 2 + CPU[:1])]
+    line = ' '.join(f'{num(a)},{num(b)}' for a, b in pts)
+
+    def m_cpu(x):
+        tx = x + sx + 7 * dx + 7
+        nums = ''.join(f'<text x="{" ".join(num(tx + i * BCW) for i in range(3))}" y="{by + 20 * k}">'
+                       f'{v:>2}%</text>' for k, v in enumerate(CPU))
+        return (f'<rect x="{num(x + 1.5)}" y="{num(cy - 4.5)}" width="9" height="9" rx="1.5" fill="none" '
+                f'stroke="#b07cff" stroke-width="1.3"/><rect x="{num(x + 4.5)}" y="{num(cy - 1.5)}" width="3" height="3" '
+                f'fill="#e0a8ff"/><path d="M{num(x + 4.5)} {num(cy - 7)}v2M{num(x + 7.5)} {num(cy - 7)}v2'
+                f'M{num(x + 4.5)} {num(cy + 5)}v2M{num(x + 7.5)} {num(cy + 5)}v2M{num(x - 1)} {num(cy - 1.5)}h2'
+                f'M{num(x - 1)} {num(cy + 1.5)}h2M{num(x + 11)} {num(cy - 1.5)}h2M{num(x + 11)} {num(cy + 1.5)}h2" '
+                f'stroke="#b07cff" stroke-width="1.1"/>'
+                f'<clipPath id="ys"><rect x="{num(x + sx)}" y="{PY + 3}" width="{num(7 * dx + .8)}" height="{PH - 6}"/></clipPath>'
+                f'<clipPath id="yn"><rect x="{num(tx - 1)}" y="{PY + 2}" width="{num(3 * BCW + 2)}" height="{PH - 4}"/></clipPath>'
+                f'<g clip-path="url(#ys)"><g transform="translate({num(x + sx)} 0)"><g class="yz">'
+                f'<polygon points="0,{num(cy + 7)} {line} {num(16 * dx)},{num(cy + 7)}" fill="url(#yv)"/>'
+                f'<polyline points="{line}" fill="none" stroke="#e0a8ff" stroke-width="1.2" stroke-linejoin="round"/>'
+                f'</g></g></g><g clip-path="url(#yn)"><g class="yn">{nums}</g></g>')
+
+    def m_mem(x):
+        return (f'<rect x="{num(x + .6)}" y="{num(cy - 4)}" width="12" height="7" rx="1" fill="none" stroke="#b07cff" '
+                f'stroke-width="1.2"/><path d="M{num(x + 3.6)} {num(cy - 2)}v3M{num(x + 6.6)} {num(cy - 2)}v3'
+                f'M{num(x + 9.6)} {num(cy - 2)}v3M{num(x + 2)} {num(cy + 3)}v2.6M{num(x + 4.6)} {num(cy + 3)}v2.6'
+                f'M{num(x + 8.6)} {num(cy + 3)}v2.6M{num(x + 11.2)} {num(cy + 3)}v2.6" stroke="#e0a8ff" stroke-width="1.1"/>'
+                + txt(x + 19, '3.1G'))
+
+    def m_temp(x):
+        return (f'<path d="M{num(x + 3)} {num(cy + 2)}V{num(cy - 5)}" stroke="#b07cff" stroke-width="3.6" '
+                f'stroke-linecap="round"/><path d="M{num(x + 3)} {num(cy + 2)}V{num(cy - 2)}" stroke="#ff6ad5" '
+                f'stroke-width="1.4" stroke-linecap="round"/><circle cx="{num(x + 3)}" cy="{num(cy + 3.4)}" r="3" '
+                f'fill="#ff6ad5"/>' + txt(x + 12, '47°'))
+
+    def m_tray(x):
+        wx, wb = x + 7, cy + 4.6
+        wifi = ''.join(arc(wx, wb, r, -45, 45) for r in (4, 7.5, 11))
+        vx = x + 27
+        bx = vx + 30 + 3 * BCW
+        return (f'<path d="{wifi}" fill="none" stroke="#b07cff" stroke-width="1.5" stroke-linecap="round"/>'
+                f'<circle cx="{num(wx)}" cy="{num(wb)}" r="1.4" fill="#e0a8ff"/>'
+                f'<path d="M{num(vx)} {num(cy - 2.6)}h2.6l3.6-3.4v12l-3.6-3.4h-2.6Z" fill="#b07cff"/>'
+                f'<path d="{arc(vx + 7, cy, 3, 45, 135)}{arc(vx + 7, cy, 5.8, 40, 140)}" fill="none" stroke="#b07cff" '
+                f'stroke-width="1.3" stroke-linecap="round"/>' + txt(vx + 17, '64%')
+                + f'<rect x="{num(bx + .6)}" y="{num(cy - 4.5)}" width="17" height="9" rx="2.2" fill="none" '
+                f'stroke="#b07cff" stroke-width="1.2"/><rect x="{num(bx + 18.2)}" y="{num(cy - 2)}" width="1.6" '
+                f'height="4" rx=".6" fill="#b07cff"/><rect x="{num(bx + 2.4)}" y="{num(cy - 2.7)}" '
+                f'width="{num(13.4 * .87)}" height="5.4" rx="1" fill="url(#ym)"/>' + txt(bx + 25, '87%'))
+
+    def m_power(x):
+        return (f'<path d="{arc(x + 1, cy + .6, 5.6, 40, 320)}M{num(x + 1)} {num(cy - 6.6)}v5.6" fill="none" '
+                f'stroke="#ff6ad5" stroke-width="1.6" stroke-linecap="round"/>')
+
+    left = [(14 + 7 + 4 * BCW, m_arch), (sum(30 if s == 'a' else 14 for s in WS) - 8, m_ws),
+            (21 + 5 * BCW + 17 + len(title) * BCW, m_title)]
+    right = [(sx + 7 * dx + 7 + 3 * BCW, m_cpu), (19 + 4 * BCW, m_mem), (12 + 3 * BCW, m_temp),
+             (82 + 6 * BCW, m_tray), (2, m_power)]
+    pills, mods = [], []
+
+    def place(x, w, fn, pad=12):
+        pills.append((x, w + 2 * pad))
+        mods.append(fn(x + pad))
+
+    x = GAP
+    for w, fn in left:
+        place(x, w, fn)
+        x += w + 24 + PG
+    x = tw - GAP
+    for w, fn in reversed(right):
+        x -= w + 24
+        place(x, w, fn)
+        x -= PG
+    cw = 19 + 5 * BCW
+    place((tw - cw) / 2 - 12, cw, m_clock)
+
+    # stars where the wallpaper shows
+    rng = np.random.default_rng(7)
+    stars = []
+    for _ in range(500):
+        x, y = rng.uniform(4, tw - 4), rng.uniform(3, th - 3)
+        if GAP - 3 < x < tw - GAP + 3 and wy - 3 < y < th - GAP + 3:
+            continue
+        if any(px - 3 < x < px + pw + 3 and PY - 3 < y < PY + PH + 3 for px, pw in pills):
+            continue
+        r = rng.choice([.5, .6, .8, 1.1])
+        c = ' class="yt" style="animation-delay:-%ss"' % num(rng.uniform(0, 4)) if r > .7 and len(stars) % 2 else ''
+        stars.append(f'<circle cx="{num(x)}" cy="{num(y)}" r="{r}" opacity="{num(rng.uniform(.3, .8))}"{c}/>')
+
+    ww, wh, cx0, cy0 = iw + 2 * BW, ih + 2 * BW, tw / 2, wy + (ih + 2 * BW) / 2
+    edge = f'x="{GAP + BW / 2}" y="{wy + BW / 2}" width="{iw + BW}" height="{ih + BW}" rx="{RND + BW / 2}"'
+    css = ('.yb text{font-size:12px;fill:#cfc2ea}.yb .ya{fill:#b07cff;font-weight:700}.yb .yk{fill:#f1e6ff;font-weight:700}'
+           '.yp{fill:#150d27;fill-opacity:.86;stroke:url(#yl)}'
+           '.yc{animation:yc 2s steps(1) infinite}@keyframes yc{50%{opacity:0}}'
+           '.yg{animation:yg 4s ease-in-out infinite}@keyframes yg{50%{opacity:.3}}'
+           '.yt{animation:yt 3s ease-in-out infinite}@keyframes yt{50%{opacity:.1}}'
+           f'.yz{{animation:yz {len(CPU)}s steps({len(CPU)}) infinite}}'
+           f'@keyframes yz{{from{{transform:translateX(-{num(dx)}px)}}to{{transform:translateX(-{num(dx * (len(CPU) + 1))}px)}}}}'
+           f'.yn{{animation:yn {len(CPU)}s steps({len(CPU)}) infinite}}'
+           f'@keyframes yn{{to{{transform:translateY(-{20 * len(CPU)}px)}}}}')
+    before = (
+        f'<style>{css}</style><defs>'
+        f'<linearGradient id="yw" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0e0820"/>'
+        f'<stop offset=".55" stop-color="#140a2c"/><stop offset="1" stop-color="#1f0d3d"/></linearGradient>'
+        f'<radialGradient id="yr1" cx=".82" cy=".02" r=".55"><stop offset="0" stop-color="#ff4fd8" stop-opacity=".42"/>'
+        f'<stop offset="1" stop-color="#ff4fd8" stop-opacity="0"/></radialGradient>'
+        f'<radialGradient id="yr2" cx=".08" cy=".98" r=".7"><stop offset="0" stop-color="#7b2ff7" stop-opacity=".55"/>'
+        f'<stop offset="1" stop-color="#7b2ff7" stop-opacity="0"/></radialGradient>'
+        f'<linearGradient id="yl" x2="0" y2="1"><stop offset="0" stop-color="#6d52a8"/>'
+        f'<stop offset="1" stop-color="#2a1d45"/></linearGradient>'
+        f'<linearGradient id="yh" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".09"/>'
+        f'<stop offset=".6" stop-color="#fff" stop-opacity="0"/></linearGradient>'
+        f'<linearGradient id="ym" x2="1" y2="1"><stop offset="0" stop-color="#9b5cff"/>'
+        f'<stop offset="1" stop-color="#ff6ad5"/></linearGradient>'
+        f'<linearGradient id="yv" x2="0" y2="1"><stop offset="0" stop-color="#e0a8ff" stop-opacity=".35"/>'
+        f'<stop offset="1" stop-color="#e0a8ff" stop-opacity="0"/></linearGradient>'
+        f'<linearGradient id="yd" gradientUnits="userSpaceOnUse" x1="{num(cx0 - ww / 2)}" y1="{num(cy0)}" '
+        f'x2="{num(cx0 + ww / 2)}" y2="{num(cy0)}"><stop offset="0" stop-color="#6a2cf5"/>'
+        f'<stop offset=".38" stop-color="#b05cff"/><stop offset=".5" stop-color="#ff6ad5"/><stop offset=".56" stop-color="#ffc8f2"/>'
+        f'<stop offset=".64" stop-color="#ff6ad5"/><stop offset="1" stop-color="#7b2ff7"/>'
+        f'<animateTransform attributeName="gradientTransform" type="rotate" values="0 {num(cx0)} {num(cy0)};'
+        f'360 {num(cx0)} {num(cy0)}" dur="12s" repeatCount="indefinite"/></linearGradient>'
+        f'<filter id="yu" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>'
+        f'<filter id="yf" x="-5%" y="-5%" width="110%" height="115%"><feGaussianBlur stdDeviation="9"/></filter>'
+        f'<filter id="ye" x="-5%" y="-50%" width="110%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>'
+        f'<clipPath id="yo"><path clip-rule="evenodd" d="M0 0H{tw}V{th}H0Z{rrect(GAP, wy, ww, wh, RND + BW)}"/></clipPath>'
+        f'</defs>'
+        f'<rect width="{tw}" height="{th}" rx="14" fill="url(#yw)"/>'
+        f'<rect width="{tw}" height="{th}" rx="14" fill="url(#yr2)"/><rect width="{tw}" height="{th}" rx="14" fill="url(#yr1)"/>'
+        f'<g fill="#f1e6ff">{"".join(stars)}</g>'
+        f'<g clip-path="url(#yo)"><rect x="{GAP}" y="{wy + 5}" width="{ww}" height="{wh}" rx="{RND + BW}" '
+        f'fill="#030108" opacity=".8" filter="url(#yf)"/></g>'
+        f'<g fill="#05020c" opacity=".7" filter="url(#ye)">'
+        + ''.join(f'<rect x="{num(px)}" y="{PY + 2}" width="{num(pw)}" height="{PH}" rx="{PH / 2}"/>' for px, pw in pills)
+        + '</g><g class="yb">'
+        + ''.join(f'<rect class="yp" x="{num(px + .5)}" y="{PY + .5}" width="{num(pw - 1)}" height="{PH - 1}" rx="{(PH - 1) / 2}"/>'
+                  f'<rect x="{num(px + 1.5)}" y="{PY + 1.5}" width="{num(pw - 3)}" height="{PH / 2}" rx="{(PH - 3) / 2}" fill="url(#yh)"/>'
+                  for px, pw in pills)
+        + ''.join(mods) + '</g>'
+        f'<g fill="none" stroke="url(#yd)"><rect {edge} stroke-width="16" stroke-opacity=".05"/>'
+        f'<rect {edge} stroke-width="9" stroke-opacity=".1"/><rect {edge} stroke-width="5" stroke-opacity=".25"/></g>'
+        f'<rect x="{GAP + BW}" y="{wy + BW}" width="{iw}" height="{ih}" rx="{RND}" fill="{BG}" fill-opacity=".93"/>')
+    after = f'<rect {edge} fill="none" stroke="url(#yd)" stroke-width="{BW}"/>'
+    return before, after, GAP + BW, wy + BW, tw, th
+
+
 def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')):
     frames = []
     for f in ids:
@@ -969,7 +1176,7 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
            f'.sc a{{fill:{COLORS[top[1]]}}}.sc tspan{{fill:{COLORS[top[2]]}}}',
            ''.join(f'.sc .{k}{{fill:{COLORS[k]}}}' for k in COLORS if k in used or k in 'fgbck'),
            '.ku{fill:#b07cff;font-weight:700}.cy{fill:#e0a8ff}.dm{fill:#75659a}.wh{fill:#f8f2ff}'
-           '.tt{fill:#9d8cbf}.cu{fill:#e2d9f3}',
+           '.cu{fill:#e2d9f3}',
            f'.fr{{animation:fr {num(LOOP)}s steps({nf}) infinite}}',
            f'@keyframes fr{{to{{transform:translateY(-{nf * FH}px)}}}}']
     for k in range(3):
@@ -1019,21 +1226,15 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
     info += [f'<rect x="{num(PX + i * 3 * CW)}" y="{sy}" width="{num(3 * CW + 0.3)}" height="15" fill="{c}"/>'
              for i, c in enumerate(SWATCH)]
 
-    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{SW}" height="{SH}" viewBox="0 0 {SW} {SH}" '
+    before, after, ox, oy, tw, th = desktop(SW, SH - TB, f'lth-a@{HOST}: ~')
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{tw}" height="{th}" viewBox="0 0 {tw} {th}" '
            f'xml:space="preserve" role="img" aria-label="lth-a running fastfetch on arch, a penguin and a polar bear on an ice floe">'
-           f'<style>{"".join(css)}</style>'
-           f'<rect x=".5" y=".5" width="{SW - 1}" height="{SH - 1}" rx="12" fill="{BG}"/>'
-           f'<path d="M.5 34V12.5A12 12 0 0 1 12.5 .5H947.5A12 12 0 0 1 959.5 12.5V34Z" fill="{BAR}"/>'
-           f'<path d="M.5 34.5H959.5" stroke="{LINE}"/>'
-           f'<circle cx="20" cy="17" r="6" fill="#ff5f57"/><circle cx="40" cy="17" r="6" fill="#febc2e"/>'
-           f'<circle cx="60" cy="17" r="6" fill="#28c840"/>'
-           f'<text x="480" y="21.5" text-anchor="middle" class="tt">lth-a@{HOST}: ~</text>'
-           f'<rect x=".5" y=".5" width="{SW - 1}" height="{SH - 1}" rx="12" fill="none" stroke="{LINE}"/>'
+           f'<style>{"".join(css)}</style>' + before + f'<g transform="translate({ox} {oy - TB})">'
            + gtext(0, SCY - 12, prompt('fastfetch'))
            + f'<clipPath id="cs"><rect x="{SCX - 8}" y="{SCY - 2}" width="{PX - SCX - 4}" height="{H * LH + 4}"/></clipPath>'
            f'<g clip-path="url(#cs)">{glow}<g class="sc" transform="translate({SCX} {SCY})">{still}</g>'
            f'<g class="sc fr">{"".join(stack)}</g>{"".join(snow)}</g>'
-           + lg + ''.join(info) + ''.join(bot) + '</svg>')
+           + lg + ''.join(info) + ''.join(bot) + '</g>' + after + '</svg>')
     with open(path, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write(svg)
     print(len(svg.encode()), 'bytes', file=sys.stderr)
