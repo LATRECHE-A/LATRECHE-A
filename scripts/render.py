@@ -1,4 +1,4 @@
-# penguin + polar bear on a spinning ice floe under the aurora, fastfetch style -> assets/terminal.svg
+# penguin + polar bear on a spinning ice floe under a starry sky, fastfetch style -> assets/terminal.svg
 # python render.py                      full build
 # python render.py quick 12             every 12th frame only -> previews/quick.svg
 # python render.py sheet NAME 0 24 ... just those frames as text in previews/NAME.html
@@ -340,11 +340,12 @@ COLORS = {
     'a': '#4a3478', 'b': '#6a4fa3', 'c': '#ab8fdc', 'd': '#9b5de5', 'e': '#c98bff',
     'f': '#dcc8ff', 'g': '#f8f2ff', 'h': '#b8622a', 'i': '#f0883e', 'j': '#ffb27a',
     'k': '#4f2a8a', 'l': '#ee82d8',
+    'm': '#1d7a3c', 'n': '#2fc25a', 'o': '#6dff95', 'p': '#d2ffdf',
 }
 # shades close enough to swap when it saves a colour switch
 SUB = 5   # cost of using a near shade, in bytes
 NEAR = {'a': 'bk', 'b': 'ac', 'c': 'b', 'd': 'e', 'e': 'l', 'f': 'g', 'g': 'f',
-        'h': 'i', 'i': 'hj', 'j': 'i', 'k': 'da', 'l': ''}
+        'h': 'i', 'i': 'hj', 'j': 'i', 'k': 'da', 'l': '', 'm': 'n', 'n': 'mo', 'o': 'np', 'p': 'o'}
 
 
 def look(mat, l, drop=0):
@@ -440,68 +441,95 @@ for r in range(H):
     on = np.nonzero(BUSY[r])[0]
     if len(on):
         BUSY[r, on[0]:on[-1] + 1] = True
-MOON = (11, 5, 5.5)                            # col, row, radius in columns
-srng = np.random.default_rng(5)
-STARS = []
-while len(STARS) < 24:
-    c, r = int(srng.integers(1, W - 1)), int(srng.integers(0, HZ - 2))
-    mc, mr, mrad = MOON
-    if BUSY[r, c]:
-        continue
-    if math.hypot(c - mc, (r - mr) * CELL) < mrad * 1.9:
-        continue
-    if any(abs(c - a) < 4 and abs(r - b) < 2 for a, b, _, _ in STARS):
-        continue
-    STARS.append((c, r, str(srng.choice(list('..+*.+'))), int(srng.integers(0, 3))))
-RESERVED = np.zeros((H, W), bool)
-for c, r, _, _ in STARS:
-    RESERVED[r, c] = True
-RESERVED |= np.hypot(CR - MOON[0], (RR - MOON[1]) * CELL) < MOON[2] * 1.6
+LEAF = (10, 10, 19)                            # stem joint col, row, middle leaflet length in columns
+LEAFLETS = ((0, 1.0), (33, 0.86), (-33, 0.86), (64, 0.7), (-64, 0.7), (93, 0.38), (-93, 0.38))
+SPARKS = ((28, 1, 1.0, '#ffffff'), (41, 4, 0.7, '#ffd6f5'), (57, 2, 0.85, '#e6d6ff'),
+          (68, 5, 0.6, '#ffffff'), (79, 1, 1.1, '#ffd6f5'), (86, 9, 0.75, '#e6d6ff'))
+PEAK = (1.6 / 2.6) ** 1.6 * (1 / 2.6)
 
 
-def aurora(ph):
-    # curtains: wavy bright lower edge, rays fading up, folds glow, all drifting on the loop
-    t = 2 * math.pi * ph
-    c, r = CR.astype(float), RR.astype(float)
-    inten = np.zeros((H, W))
-    for base, tilt, amp, k1, n1, p1, top, x0, x1, gain in ((13.5, 0.075, 2.2, 0.08, 1, 0.3, 5.5, 18, 96, 1.6),
-                                                          (7.5, 0.04, 1.5, 0.13, -1, 2.1, 3.5, 34, 84, 1.15)):
-        ph1 = c * k1 + n1 * t + p1
-        edge = base - tilt * (c - 20) + amp * np.sin(ph1) + 0.9 * np.sin(c * 0.23 - 2 * t + 2 * p1)
-        h = edge - r
-        band = np.where(h >= 0, np.exp(-h / top), np.exp(h * 2.2))
-        env = np.clip((c - x0) / 9, 0, 1) * np.clip((x1 - c) / 9, 0, 1)
-        ray = (0.5 + 0.5 * np.sin(c * 1.3 + 4 * t + p1)) * (0.55 + 0.45 * np.sin(c * 0.41 - 2 * t + p1))
-        fold = 0.75 + 0.5 * np.abs(np.cos(ph1))
-        inten = np.maximum(inten, gain * band * (0.3 + 0.9 * ray) * env * fold)
-    return np.where(RR < HZ - 2, inten, 0)
+def leaf_at(x, y):
+    # x columns right, y columns up from the joint -> (distance from the rib 0..1, leaflet angle) or None
+    best = None
+    for ang, k in LEAFLETS:
+        a = math.radians(ang)
+        u = x * math.sin(a) + y * math.cos(a)
+        v = x * math.cos(a) - y * math.sin(a)
+        n = LEAF[2] * k
+        if not 0 < u < n:
+            continue
+        t = u / n
+        # pinched at the base, widest past the middle, pointy tip, serrated edge
+        w = 0.15 * n * t ** 1.6 * (1 - t) / PEAK
+        w *= 0.75 + 0.25 * ((t * 8) % 1)
+        if abs(v) < w and (best is None or abs(v) / w < best[0]):
+            best = (abs(v) / w, ang)
+    if best:
+        return best
+    # stem, bending a little
+    if -4 < y < 0.6 and abs(x - 0.06 * y * y) < 0.32:
+        return 0.0, 180
+    return None
 
 
-def moon_cells():
+def leaf_cells():
     out = {}
-    mc, mr, mrad = MOON
-    lm = unit([-0.45, 0.3, 0.85])
-    for r in range(int(mr - mrad / CELL) - 3, int(mr + mrad / CELL) + 4):
-        for c in range(int(mc - mrad) - 4, int(mc + mrad) + 5):
-            # coverage of the cell by the disc, 4x4 samples
-            sub = [((c - 0.375 + i * 0.25 - mc) / mrad, (mr - r + 0.375 - j * 0.25) * CELL / mrad)
-                   for i in range(4) for j in range(4)]
-            cv = sum(math.hypot(x, y) < 1 for x, y in sub) / 16
-            dx, dy = (c - mc) / mrad, (mr - r) * CELL / mrad
-            d = math.hypot(dx, dy)
-            if cv > 0.2:
-                nz = math.sqrt(max(0, 1 - d * d))
-                l = max(0.0, dx * lm[0] + dy * lm[1] + nz * lm[2])
-                mar = any(math.hypot(dx - cx, dy - cy) < cr for cx, cy, cr in
-                          ((-0.3, 0.25, 0.26), (0.3, -0.15, 0.22), (0.12, 0.45, 0.15), (-0.3, -0.42, 0.13)))
-                if cv < 0.85:
-                    ch = '.' if dy > 0.35 else "'" if dy < -0.35 else ':'
-                else:
-                    ch = 'o' if mar and l > 0.3 else ':'
-                l *= 0.75 if mar else 1
-                out[(r, c)] = (ch, 'g' if l > 0.62 else 'f' if l > 0.36 else 'c')
-            elif d < 1.55 and hash2(c, r) < 0.25:
-                out[(r, c)] = ('.', 'k' if d > 1.3 else 'b')
+    lc, lr, n = LEAF
+    for r in range(0, int(lr) + 4):
+        for c in range(0, int(lc + n) + 2):
+            hits, ys = [], []
+            for i in range(4):
+                for j in range(4):
+                    h = leaf_at(c - 0.375 + i * 0.25 - lc, (lr - (r - 0.375 + j * 0.25)) * CELL)
+                    if h:
+                        hits.append(h)
+                        ys.append(j)
+            cv = len(hits) / 16
+            if cv < 0.19:
+                continue
+            d = sum(h[0] for h in hits) / len(hits)
+            ang = Counter(h[1] for h in hits).most_common(1)[0][0]
+            if ang == 180:
+                out[(r, c)] = ('|', 'n')
+            elif d < 0.32 and cv > 0.55:
+                # midrib, drawn the way the leaflet points on screen
+                a = math.radians(ang)
+                th = math.degrees(math.atan2(math.sin(a), math.cos(a) / CELL))
+                ch = '|' if abs(th) < 22.5 else '-' if abs(th) > 67.5 else '/' if th > 0 else '\\'
+                out[(r, c)] = (ch, 'p')
+            elif cv > 0.8:
+                out[(r, c)] = ('@' if d < 0.55 else '#' if d < 0.8 else '%', 'o' if d < 0.6 else 'n')
+            else:
+                my = sum(ys) / len(ys)
+                ch = '.' if my > 2 else "'" if my < 1 else ':' if cv < 0.45 else '*'
+                out[(r, c)] = (ch, 'n' if cv > 0.45 else 'm')
+    return out
+
+
+LEAFC = leaf_cells()
+RESERVED = np.zeros((H, W), bool)
+for r, c in LEAFC:
+    RESERVED[r, c] = True
+
+
+def make_stars(occ, n=80):
+    # ascii stars only where nothing ever moves, a few colours and three twinkle speeds
+    rng = np.random.default_rng(5)
+    free = ~occ & ~RESERVED
+    rs, cs = zip(*LEAFC)
+    free[:max(rs) + 2, :max(cs) + 3] = False
+    for c, r, _, _ in SPARKS:
+        free[max(0, r - 1):r + 2, max(0, c - 3):c + 4] = False
+    out, tries = [], 0
+    while len(out) < n and tries < 20000:
+        tries += 1
+        c, r = int(rng.integers(1, W - 1)), int(rng.integers(0, HZ - 1))
+        if not free[r, c] or any(abs(c - a) < 3 and abs(r - b) < 2 for a, b, _, _, _ in out):
+            continue
+        x = rng.random()
+        ch, cl = (('.', 'c') if x < 0.45 else ("'", 'b') if x < 0.55 else ('+', 'f') if x < 0.78
+                  else ('*', 'g') if x < 0.92 else ('*', 'l'))
+        out.append((c, r, ch, cl, int(rng.integers(0, 3))))
     return out
 
 
@@ -548,7 +576,6 @@ def puffs(ph):
 
 def background(ph, grid, wcells):
     t = 2 * math.pi * ph
-    inten = aurora(ph)
     tw = (YW - RO[1]) / RDC[1]
     x, z = RO[0] + RDC[0] * tw, RO[2] + RDC[2] * tw
     rr = np.hypot(x, z)
@@ -559,7 +586,7 @@ def background(ph, grid, wcells):
     ring = np.cos(2 * math.pi * (de * 6.0 - 2 * ph))
     de, ring, rr = de.reshape(H, W), ring.reshape(H, W), rr.reshape(H, W)
     hsh = hash2(CR, RR)
-    mc = MOON[0]
+    mc = LEAF[0]
     for r in range(H):
         for c in range(W):
             if grid[r][c] is not None:
@@ -568,12 +595,7 @@ def background(ph, grid, wcells):
                 grid[r][c] = (' ', None)
                 continue
             if r < HZ:
-                v = inten[r, c]
-                if v > 0.36:
-                    ch = '.' if v < 0.42 else ':' if v < 0.56 else '|'
-                    grid[r][c] = (ch, 'k' if v < 0.5 else 'd' if v < 0.78 else 'e' if v < 1.0 else 'l')
-                else:
-                    grid[r][c] = (' ', None)
+                grid[r][c] = (' ', None)
                 continue
             if (r, c) in wcells:
                 grid[r][c] = wcells[(r, c)]
@@ -584,7 +606,7 @@ def background(ph, grid, wcells):
             if de[r, c] < 0.05:
                 grid[r][c] = ('~', 'e')
             elif gl and math.sin(r * 2.3 + c * 0.7 - 4 * t) > -0.2:
-                grid[r][c] = ('-' if (r + c) % 3 else '=', 'f' if r < HZ + 6 else 'c')
+                grid[r][c] = ('-' if (r + c) % 3 else '=', 'n' if r < HZ + 6 else 'm')
             elif ring[r, c] > 0.8 and h < 0.7 * fade:
                 grid[r][c] = ('~' if rr[r, c] < 1.2 else '-', 'k')
             elif ring[r, c] > 0.1 and h < 0.12 * fade:
@@ -755,7 +777,7 @@ def esc(s):
 
 def static_layer():
     g = [[(' ', None)] * W for _ in range(H)]
-    for (r, c), v in moon_cells().items():
+    for (r, c), v in LEAFC.items():
         if 0 <= r < H and 0 <= c < W:
             g[r][c] = v
     return g
@@ -765,8 +787,8 @@ def sheet(name, frames):
     out = ['<html><body style="background:#120c1f;margin:8px;display:grid;'
            'grid-template-columns:repeat(2,auto);gap:6px 14px;justify-content:start">']
     st = static_layer()
-    for c, r, ch, _ in STARS:
-        st[r][c] = (ch, 'f')
+    for c, r, ch, cl, _ in make_stars(BUSY):
+        st[r][c] = (ch, cl)
     for f in frames:
         g = render(f / NF)
         g = [[st[r][c] if st[r][c][1] else g[r][c] for c in range(W)] for r in range(H)]
@@ -1139,6 +1161,12 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
         frames.append(render(f / NF))
         print(f'\rframe {f + 1}/{NF}', end='', file=sys.stderr)
     print(file=sys.stderr)
+    # sky cells that something ever passes through, stars stay out of those
+    occ = np.zeros((H, W), bool)
+    for g in frames:
+        occ |= np.array([[ch != ' ' for ch, _ in row] for row in g])
+    occ |= np.roll(occ, 1, 1) | np.roll(occ, -1, 1)
+    stars = make_stars(occ)
 
     # most used colour is the default fill, the next two get the short <a> and bare <tspan> wrappers
     def colour_tags(frs):
@@ -1161,38 +1189,57 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
         rows = ''.join(row_text(row, LH - 2 + r * LH, tags, top[0]) for r, row in enumerate(g))
         stack.append(f'<g transform="translate({SCX} {SCY + k * FH})">{rows}</g>')
 
-    # moon and stars sit still outside the film strip, stars twinkle
+    # the leaf glows, the stars twinkle, both sit still outside the film strip
     st = static_layer()
     still = ''.join(row_text(row, LH - 2 + r * LH, tags, top[0]) for r, row in enumerate(st))
-    for i, (c, r, ch, k) in enumerate(STARS):
-        dur = LOOP / (2, 4, 5)[k]
-        still += (f'<text y="{LH - 2 + r * LH}" class="f t{k}" style="animation-delay:-{num(hash2(i, 3) * dur)}s">'
-                  f'{" " * c}{esc(ch)}</text>')
+    tws = ''
+    for i, (c, r, ch, cl, k) in enumerate(stars):
+        dur = LOOP / (1, 2, 4)[k]
+        tws += (f'<text y="{LH - 2 + r * LH}" class="{cl} t{k}" style="animation-delay:-{num(hash2(i, 3) * dur)}s">'
+                f'{" " * c}{esc(ch)}</text>')
 
     nf = len(frames)
     used = set(top)
     css = [f'text{{font-family:{FONT};font-size:13px;fill:#e2d9f3;white-space:pre}}',
            f'.sc text{{font-size:{FS}px;fill:{COLORS[top[0]]}}}',
            f'.sc a{{fill:{COLORS[top[1]]}}}.sc tspan{{fill:{COLORS[top[2]]}}}',
-           ''.join(f'.sc .{k}{{fill:{COLORS[k]}}}' for k in COLORS if k in used or k in 'fgbck'),
+           ''.join(f'.sc .{k}{{fill:{COLORS[k]}}}' for k in COLORS if k in used or k in 'fgbcklmnop'),
            '.ku{fill:#b07cff;font-weight:700}.cy{fill:#e0a8ff}.dm{fill:#75659a}.wh{fill:#f8f2ff}'
            '.cu{fill:#e2d9f3}',
            f'.fr{{animation:fr {num(LOOP)}s steps({nf}) infinite}}',
            f'@keyframes fr{{to{{transform:translateY(-{nf * FH}px)}}}}']
     for k in range(3):
-        css.append(f'.t{k}{{animation:t{k} {num(LOOP / (2, 4, 5)[k])}s ease-in-out infinite}}'
-                   f'@keyframes t{k}{{0%,100%{{opacity:1}}50%{{opacity:.2}}}}')
-    # soft glow behind the aurora and the moon
-    css.append(f'.gl{{animation:gl {num(LOOP / 2)}s ease-in-out infinite}}'
-               '@keyframes gl{0%,100%{opacity:.55;transform:translateX(-10px)}50%{opacity:1;transform:translateX(10px)}}')
-    mx, my = SCX + (MOON[0] + 0.5) * FS * 0.58, SCY + (MOON[1] + 0.5) * LH
-    glow = (f'<radialGradient id="ga"><stop offset="0" stop-color="#c060ff" stop-opacity=".2"/>'
-            f'<stop offset=".55" stop-color="#9b4dff" stop-opacity=".08"/><stop offset="1" stop-color="#9b4dff" stop-opacity="0"/></radialGradient>'
-            f'<radialGradient id="gp"><stop offset="0" stop-color="#ff7ad9" stop-opacity=".13"/><stop offset="1" stop-color="#ff7ad9" stop-opacity="0"/></radialGradient>'
-            f'<radialGradient id="gm"><stop offset=".3" stop-color="#e6d6ff" stop-opacity=".16"/><stop offset="1" stop-color="#e6d6ff" stop-opacity="0"/></radialGradient>'
-            f'<circle cx="{num(mx)}" cy="{num(my)}" r="62" fill="url(#gm)"/>'
-            f'<g class="gl"><ellipse cx="{SCX + 300}" cy="{SCY + 95}" rx="230" ry="80" fill="url(#ga)"/>'
-            f'<ellipse cx="{SCX + 330}" cy="{SCY + 110}" rx="150" ry="38" fill="url(#gp)"/></g>')
+        css.append(f'.t{k}{{animation:t{k} {num(LOOP / (1, 2, 4)[k])}s ease-in-out infinite}}'
+                   f'@keyframes t{k}{{0%,100%{{opacity:1}}50%{{opacity:.15}}}}')
+    # green halo that breathes behind the leaf, four point sparkles, a couple of shooting stars
+    css += [f'.lh{{animation:lh {num(LOOP / 2)}s ease-in-out infinite}}'
+            '@keyframes lh{0%,100%{opacity:.6}50%{opacity:1}}',
+            f'.tw{{animation:tw {num(LOOP / 2)}s ease-in-out infinite}}'
+            '@keyframes tw{0%,100%{transform:scale(.45) rotate(0);opacity:.5}50%{transform:scale(1) rotate(20deg);opacity:1}}',
+            '.ss{opacity:0;animation:ss 14s linear infinite}'
+            '@keyframes ss{0%{opacity:0;transform:translate(0,0)}1%{opacity:1}6%{opacity:0;transform:translate(190px,66px)}'
+            '100%{opacity:0;transform:translate(190px,66px)}}']
+    lx, ly = SCX + (LEAF[0] + 0.5) * FS * 0.58, SCY + (LEAF[1] - 4) * LH
+    star4 = 'M0-7Q.7-.7 7 0Q.7 .7 0 7Q-.7 .7-7 0Q-.7-.7 0-7Z'
+    sparks = ''.join(
+        f'<g transform="translate({num(SCX + (c + 0.5) * FS * 0.58)} {SCY + r * LH + 4}) scale({sz})">'
+        f'<g class="tw" style="animation-delay:-{num(hash2(c, r) * LOOP / 2)}s">'
+        f'<circle r="9" fill="url(#sg)"/><path d="{star4}" fill="{col}"/></g></g>'
+        for c, r, sz, col in SPARKS)
+    shoot = ''.join(
+        f'<g class="ss" style="animation-delay:-{d}s"><g transform="translate({x} {y})">'
+        f'<path d="M0 0L-52-18" stroke="url(#sl)" stroke-width="1.6" stroke-linecap="round"/>'
+        f'<circle r="1.7" fill="#fff"/></g></g>'
+        for x, y, d in ((SCX + 230, SCY + 6, 0), (SCX + 60, SCY + 30, 7)))
+    glow = (f'<radialGradient id="gl"><stop offset="0" stop-color="#5dff8a" stop-opacity=".38"/>'
+            f'<stop offset=".5" stop-color="#22c55e" stop-opacity=".12"/><stop offset="1" stop-color="#22c55e" stop-opacity="0"/></radialGradient>'
+            f'<radialGradient id="sg"><stop offset="0" stop-color="#fff" stop-opacity=".55"/>'
+            f'<stop offset="1" stop-color="#d9b8ff" stop-opacity="0"/></radialGradient>'
+            f'<linearGradient id="sl" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="-52" y2="-18">'
+            f'<stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#e9c8ff" stop-opacity="0"/></linearGradient>'
+            f'<filter id="lf" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.8" result="b"/>'
+            f'<feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'
+            f'<ellipse class="lh" cx="{num(lx)}" cy="{num(ly)}" rx="78" ry="62" fill="url(#gl)"/>' + sparks + shoot)
 
     # snow drifts down on its own, one row per step, same loop as the scene
     fall = (H + 2) * LH
@@ -1232,7 +1279,7 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
            f'<style>{"".join(css)}</style>' + before + f'<g transform="translate({ox} {oy - TB})">'
            + gtext(0, SCY - 12, prompt('fastfetch'))
            + f'<clipPath id="cs"><rect x="{SCX - 8}" y="{SCY - 2}" width="{PX - SCX - 4}" height="{H * LH + 4}"/></clipPath>'
-           f'<g clip-path="url(#cs)">{glow}<g class="sc" transform="translate({SCX} {SCY})">{still}</g>'
+           f'<g clip-path="url(#cs)">{glow}<g class="sc" transform="translate({SCX} {SCY})"><g filter="url(#lf)">{still}</g>{tws}</g>'
            f'<g class="sc fr">{"".join(stack)}</g>{"".join(snow)}</g>'
            + lg + ''.join(info) + ''.join(bot) + '</g>' + after + '</svg>')
     with open(path, 'w', encoding='utf-8', newline='\n') as fh:
