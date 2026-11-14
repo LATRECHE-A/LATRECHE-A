@@ -1,4 +1,4 @@
-# spinning penguin + polar bear on an ice floe, fastfetch style -> assets/terminal.svg
+# penguin + polar bear on a spinning ice floe under the aurora, fastfetch style -> assets/terminal.svg
 # python render.py                      full build
 # python render.py quick 12             every 12th frame only -> previews/quick.svg
 # python render.py sheet NAME 0 24 ... just those frames as text in previews/NAME.html
@@ -9,17 +9,17 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # ascii grid for the 3d scene
-W, H = 74, 34
-FS, LH = 11, 13           # scene font size and row pitch
+W, H = 90, 58
+FS, LH = 9, 10            # scene font size and row pitch
 CELL = LH / (FS * 0.6)    # cell height / width
 SX, SY = 2, 3             # subsamples per cell
-FPS, LOOP = 12, 8.0
+FPS, LOOP = 10, 8.0
 NF = round(FPS * LOOP)
 
 # camera + world
-EL, DIST, TX, TY, HW = 19, 7.0, -0.05, 0.42, 0.87
+EL, DIST, TX, TY, HW = 15, 7.0, 0.0, 0.37, 0.86
 HH = HW * H * CELL / W
-YT, YW, YB = 0.0, -0.13, -0.6
+YT, YW, YB = 0.0, -0.1, -0.6
 
 
 def unit(v):
@@ -63,9 +63,30 @@ def roty(p, a):
     return np.stack([c * p[0] + s * p[2], p[1], c * p[2] - s * p[0]])
 
 
+def rotx(p, a):
+    c, s = math.cos(a), math.sin(a)
+    return np.stack([p[0], c * p[1] - s * p[2], s * p[1] + c * p[2]])
+
+
+def rotz(p, a):
+    c, s = math.cos(a), math.sin(a)
+    return np.stack([c * p[0] - s * p[1], s * p[0] + c * p[1], p[2]])
+
+
 def sstep(a, b, x):
     t = min(max((x - a) / (b - a), 0), 1)
     return t * t * (3 - 2 * t)
+
+
+def win(ph, a, b, e):
+    # 1 from a to b around the loop, eased in and out over e
+    x = (ph - a) % 1
+    return sstep(0, e, x) * (1 - sstep(b - a - e, b - a, x))
+
+
+def spin(ph):
+    # linger on the front and back, rush through the side views where they line up
+    return SPIN0 + 2 * math.pi * ph - 0.35 * math.sin(4 * math.pi * ph)
 
 
 # ice floe: convex slab cut by random planes, slightly faceted top
@@ -106,68 +127,105 @@ def floor_at(x, z):
     return min(YT + o - tx * x - tz * z for tx, tz, o in TOPS)
 
 
-PPOS, PYAW = (-0.33, 0.1), 0.25
-BPOS, BYAW = (0.31, -0.09), -0.2
+PPOS, PYAW = (-0.32, 0.17), 0.68
+BPOS, BYAW = (0.3, -0.15), 0.28
+SPIN0 = math.atan2(BPOS[1] - PPOS[1], BPOS[0] - PPOS[0])   # angle where they stand side by side
 PP = np.array([[PPOS[0]], [floor_at(*PPOS) - 0.01], [PPOS[1]]])
 BP = np.array([[BPOS[0]], [floor_at(*BPOS) - 0.01], [BPOS[1]]])
+PIV = np.array([[0], [0.03], [0]])
+NECK = np.array([[0], [0.66], [0.02]])
 
 
 def flipper(q, s, a):
-    x, y, z = q[0] - s * 0.18, q[1] - 0.56, q[2]
+    x, y, z = q[0] - s * 0.19, q[1] - 0.57, q[2] + 0.01
     c, sn = math.cos(s * a), math.sin(s * a)
-    return ell((c * x + sn * y, c * y - sn * x, z), (0, -0.16, 0), (0.035, 0.18, 0.075))
-
-
-def penguin(q, wave):
-    body = smin(ell(q, (0, 0.27, 0), (0.24, 0.27, 0.21)), ell(q, (0, 0.5, 0.005), (0.18, 0.22, 0.17)), 0.1)
-    d = smin(body, sph(q, (0, 0.77, 0.01), 0.16), 0.04)
-    d = smin(d, flipper(q, 1, 0.35), 0.03)
-    d = smin(d, flipper(q, -1, wave), 0.03)
-    beak = ell(q, (0, 0.725, 0.17), (0.07, 0.035, 0.08))
-    feet = np.minimum(ell(q, (0.085, 0.025, 0.12), (0.07, 0.025, 0.09)),
-                      ell(q, (-0.085, 0.025, 0.12), (0.07, 0.025, 0.09)))
-    eyes = np.minimum(sph(q, (0.05, 0.795, 0.145), 0.022), sph(q, (-0.05, 0.795, 0.145), 0.022))
-    return d, beak, feet, eyes
-
-
-def bear(q):
-    d = smin(ell(q, (0, 0.3, -0.04), (0.29, 0.29, 0.27)), ell(q, (0, 0.56, 0), (0.21, 0.22, 0.19)), 0.12)
-    d = smin(d, sph(q, (0, 0.85, 0.05), 0.165), 0.06)
-    d = smin(d, ell(q, (0, 0.8, 0.2), (0.085, 0.072, 0.11)), 0.04)
-    for s in (-1, 1):
-        d = smin(d, sph(q, (s * 0.125, 0.995, 0.02), 0.06), 0.025)
-        d = smin(d, cap(q, (s * 0.17, 0.6, 0.05), (s * 0.14, 0.2, 0.2), 0.065), 0.05)
-        d = smin(d, cap(q, (s * 0.17, 0.16, 0.05), (s * 0.21, 0.08, 0.3), 0.085), 0.06)
-    nose = ell(q, (0, 0.835, 0.3), (0.036, 0.027, 0.03))
-    eyes = np.minimum(sph(q, (0.07, 0.915, 0.175), 0.024), sph(q, (-0.07, 0.915, 0.175), 0.024))
-    return d, nose, eyes
+    return ell((c * x + sn * y, c * y - sn * x, z), (0, -0.12, 0), (0.032, 0.135, 0.072))
 
 
 def wave(ph):
     # flipper goes up while the penguin faces us
-    up = sstep(0.25, 0.8, math.cos(PYAW + 2 * math.pi * ph))
-    return 0.35 + up * (1.9 + 0.35 * math.sin(2 * math.pi * 6 * ph))
+    up = sstep(0.3, 0.85, math.cos(PYAW + spin(ph)))
+    return 0.3 + up * (0.85 + 0.45 * math.sin(2 * math.pi * 10 * ph))
+
+
+def roll(ph):
+    return 0.09 * math.sin(2 * math.pi * 4 * ph)
+
+
+def penguin(q, ph):
+    # waddle: the body rocks over the feet
+    w = rotz(q - PIV, -roll(ph)) + PIV
+    d = smin(ell(w, (0, 0.27, 0), (0.24, 0.27, 0.21)), ell(w, (0, 0.5, 0.005), (0.18, 0.22, 0.17)), 0.1)
+    d = smin(d, sph(w, (0, 0.77, 0.01), 0.16), 0.04)
+    fl = np.minimum(flipper(w, 1, 0.3), flipper(w, -1, wave(ph)))
+    bu = ell(w, (0, 0.738, 0.165), (0.06, 0.03, 0.095))
+    bl = ell(w, (0, 0.706, 0.16), (0.045, 0.021, 0.08))
+    ft = 9.0
+    for s in (-1, 1):
+        x0 = s * 0.095
+        f = ell(q, (x0, 0.022, 0.07), (0.06, 0.022, 0.06))
+        for a in (-0.6, 0, 0.6):
+            a += s * 0.2
+            f = smin(f, cap(q, (x0, 0.02, 0.07), (x0 + math.sin(a) * 0.105, 0.016, 0.07 + math.cos(a) * 0.105), 0.019), 0.012)
+        ft = np.minimum(ft, f)
+    ey = np.minimum(sph(w, (0.058, 0.8, 0.132), 0.036), sph(w, (-0.058, 0.8, 0.132), 0.036))
+    parts = [d, fl, bu, bl, ft, ey]
+    return np.minimum.reduce([smin(d, fl, 0.015), bu, bl, ft, ey]), parts, w
+
+
+def fur(q):
+    x, y, z = q[0] * 110, q[1] * 110, q[2] * 110
+    return np.sin(x + 2.1 * np.sin(y * 0.45 + z * 0.3)) * np.sin(z * 0.8 - x * 0.35 + 1.7 * np.sin(y * 0.6))
+
+
+def head_pose(ph):
+    # the bear looks over at the penguin for a while, then back at us with two little nods
+    yaw = -0.62 * win(ph, 0.06, 0.5, 0.09)
+    nod = 0.16 * win(ph, 0.795, 0.995, 0.02) * (0.5 - 0.5 * math.cos(2 * math.pi * 10 * ph))
+    return yaw, nod
+
+
+def bear(q, ph):
+    yaw, nod = head_pose(ph)
+    d = smin(ell(q, (0, 0.3, -0.04), (0.29, 0.29, 0.27)), ell(q, (0, 0.56, 0), (0.21, 0.22, 0.19)), 0.12)
+    for s in (-1, 1):
+        # front legs down to the paws, hind legs forward with the soles showing
+        d = smin(d, cap(q, (s * 0.17, 0.58, 0.05), (s * 0.15, 0.1, 0.19), 0.066), 0.05)
+        d = smin(d, ell(q, (s * 0.15, 0.055, 0.23), (0.072, 0.052, 0.088)), 0.03)
+        d = smin(d, cap(q, (s * 0.17, 0.16, 0.0), (s * 0.22, 0.12, 0.29), 0.085), 0.06)
+        d = smin(d, ell(q, (s * 0.225, 0.135, 0.355), (0.074, 0.098, 0.045)), 0.03)
+    d = d - 0.0022 * fur(q)
+    h = rotx(roty(q - NECK, -yaw), -nod) + NECK
+    hd = smin(sph(h, (0, 0.86, 0.05), 0.165), ell(h, (0, 0.8, 0.205), (0.088, 0.075, 0.11)), 0.05)
+    for s in (-1, 1):
+        hd = smin(hd, ell(h, (s * 0.13, 1.0, 0.02), (0.07, 0.066, 0.04)), 0.025)
+    hd = hd - 0.0022 * fur(h)
+    no = ell(h, (0, 0.842, 0.303), (0.048, 0.034, 0.03))
+    ey = np.minimum(sph(h, (0.074, 0.918, 0.172), 0.03), sph(h, (-0.074, 0.918, 0.172), 0.03))
+    parts = [d, hd, no, ey]
+    return np.minimum.reduce([smin(d, hd, 0.05), no, ey]), parts, h
 
 
 # bounding spheres so far away points skip the character sdfs
 PB = (PP[:, 0] + [0, 0.48, 0], 0.62)
-BB = (BP[:, 0] + [0, 0.52, 0], 0.7)
+BB = (BP[:, 0] + [0, 0.52, 0], 0.72)
 
 
 def scene(p, ph, full=False):
-    q = roty(p, -2 * math.pi * ph)
+    q = roty(p, -spin(ph))
     qp = roty(q - PP, -PYAW)
     qb = roty(q - BP, -BYAW)
     if full:
-        parts = [floe(q), *penguin(qp, wave(ph)), *bear(qb)]
-        return np.minimum.reduce(parts), parts, qp
+        dp, pp, pw = penguin(qp, ph)
+        db, bp, bh = bear(qb, ph)
+        parts = [floe(q), *pp, *bp]
+        return np.minimum.reduce([floe(q), dp, db]), parts, (pw, qb, bh)
     d = floe(q)
-    for (c, r), fn, lq in ((PB, lambda v: np.minimum.reduce(penguin(v, wave(ph))), qp),
-                           (BB, lambda v: np.minimum.reduce(bear(v)), qb)):
+    for (c, r), fn, lq in ((PB, penguin, qp), (BB, bear, qb)):
         bd = sph(q, c, r)
         near = bd < 0.05
         if near.any():
-            bd[near] = fn(lq[:, near])
+            bd[near] = fn(lq[:, near], ph)[0]
         d = np.minimum(d, bd)
     return d
 
@@ -192,27 +250,35 @@ def rays(nx, ny):
     return rd / np.linalg.norm(rd, axis=0)
 
 
+def project(p):
+    d = np.asarray(p, float) - RO
+    z = d @ FW
+    x, y = (d @ RT) / z * DIST, (d @ UP) / z * DIST
+    return (x / (2 * HW) + 0.5) * W - 0.5, (0.5 - y / (2 * HH)) * H - 0.5
+
+
 RD = rays(W * SX, H * SY)
 RDC = rays(W, H)
-BC, BR = np.array([0, 0.3, 0.0]), 1.35
+BC, BR = np.array([0, 0.32, 0.0]), 1.35
 
 
-def march(rd, ph):
+def march(ro, rd, ph, steps=110, eps=0.002):
     n = rd.shape[1]
-    oc = RO - BC
-    b = rd.T @ oc
-    disc = b * b - (oc @ oc - BR * BR)
+    ro = np.broadcast_to(ro, rd.shape)
+    oc = ro - BC[:, None]
+    b = (rd * oc).sum(0)
+    disc = b * b - ((oc * oc).sum(0) - BR * BR)
     alive = disc > 0
     sq = np.sqrt(np.maximum(disc, 0))
     t = np.maximum(-b - sq, 0)
     tfar = -b + sq
     hit = np.zeros(n, bool)
-    for _ in range(140):
+    for _ in range(steps):
         idx = np.nonzero(alive)[0]
         if not len(idx):
             break
-        d = scene(RO[:, None] + rd[:, idx] * t[idx], ph)
-        h = d < 0.0015
+        d = scene(ro[:, idx] + rd[:, idx] * t[idx], ph)
+        h = d < eps
         t[idx] += np.where(h, 0, d * 0.85)
         hit[idx[h]] = True
         alive[idx[h | (t[idx] > tfar[idx])]] = False
@@ -249,27 +315,36 @@ def occl(p, n, ph):
 
 
 # materials
-ICET, ICES, PDARK, PWHITE, ORANGE, EYE, BEAR, FEET = range(1, 9)
+ICET, ICES, PDARK, PWHITE, BEAKU, BEAKL, FEET, EYE, BEAR, INEAR, PAD, NOSE = range(1, 13)
+# parts from scene(full=True) -> material and object id (1 ice, 3 penguin, 5 flipper, 4 bear, 6 bear head)
+MATOF = np.array([ICET, PDARK, PDARK, BEAKU, BEAKL, FEET, EYE, BEAR, BEAR, NOSE, EYE])
+OIDOF = np.array([1, 3, 5, 3, 3, 3, 3, 4, 6, 6, 6])
+ANIMAL = np.array([0, 1, 1, 3, 4, 3, 4])
 # per material: char ramp dark -> bright, light thresholds for colour, colour classes
 MATS = {
-    PDARK: ('=+*#%', (0.5,), 'ab'),
-    PWHITE: ('*#%@', (0.5,), 'fg'),
-    BEAR: ('+*#%@', (0.42,), 'fg'),
+    PDARK: ('-=+*#', (0.55,), 'bc'),
+    PWHITE: ('+*#%@', (0.45,), 'fg'),
+    BEAR: ('=+*#%@', (0.4,), 'fg'),
     ICET: (' .:', (0.85,), 'kd'),
     ICES: (':|', (2,), 'k'),
-    ORANGE: ('+*#%', (0.45, 0.8), 'hij'),
+    BEAKU: ('*#%', (0.5,), 'ij'),
+    BEAKL: ('=+*', (2,), 'h'),
     FEET: ('=*#', (0.45, 0.8), 'hij'),
+    INEAR: ('+*', (2,), 'l'),
+    PAD: ('o@', (2,), 'b'),
+    NOSE: ('@', (2,), 'a'),
 }
-OUTC = {PDARK: 'c', PWHITE: 'f', BEAR: 'g', ICET: 'd', ICES: 'd', ORANGE: 'i', FEET: 'i', EYE: 'a'}
+OUTC = {PDARK: 'c', PWHITE: 'f', BEAR: 'g', ICET: 'd', ICES: 'd', BEAKU: 'i', BEAKL: 'i', FEET: 'i',
+        EYE: 'a', INEAR: 'f', PAD: 'f', NOSE: 'f'}
 COLORS = {
     'a': '#4a3478', 'b': '#6a4fa3', 'c': '#ab8fdc', 'd': '#9b5de5', 'e': '#c98bff',
     'f': '#dcc8ff', 'g': '#f8f2ff', 'h': '#b8622a', 'i': '#f0883e', 'j': '#ffb27a',
-    'k': '#4f2a8a',
+    'k': '#4f2a8a', 'l': '#ee82d8',
 }
 # shades close enough to swap when it saves a colour switch
 SUB = 5   # cost of using a near shade, in bytes
-NEAR = {'a': 'b', 'b': 'ac', 'c': 'b', 'd': 'ek', 'e': 'df', 'f': 'eg', 'g': 'f',
-        'h': 'i', 'i': 'hj', 'j': 'i', 'k': 'd'}
+NEAR = {'a': 'bk', 'b': 'ac', 'c': 'b', 'd': 'e', 'e': 'l', 'f': 'g', 'g': 'f',
+        'h': 'i', 'i': 'hj', 'j': 'i', 'k': 'da', 'l': ''}
 
 
 def look(mat, l, drop=0):
@@ -281,54 +356,48 @@ def look(mat, l, drop=0):
     return ramp[max(0, j - drop)], cl[i]
 
 
+def classify(p, ph, n):
+    _, parts, (pw, qb, bh) = scene(p, ph, True)
+    m = np.argmin(np.array(parts), axis=0)
+    mat, oid = MATOF[m], OIDOF[m]
+    side = (mat == ICET) & (n[1] < 0.8)
+    mat = np.where(side, ICES, mat)
+    oid = np.where(side, 2, oid)
+    # tux style white belly and face mask
+    x, y, z = pw
+    white = ((z > 0) & ((x / 0.165) ** 2 + ((y - 0.34) / 0.35) ** 2 < 1)) | \
+            ((z > 0.04) & (((np.abs(x) - 0.062) / 0.074) ** 2 + ((y - 0.805) / 0.085) ** 2 < 1)) | \
+            ((z > 0.08) & ((x / 0.1) ** 2 + ((y - 0.725) / 0.055) ** 2 < 1))
+    mat = np.where((m == 1) & white, PWHITE, mat)
+    # inner ears, foot pads
+    x, y, z = bh
+    inner = (z > 0.03) & ((((np.abs(x) - 0.13) / 0.046) ** 2 + ((y - 0.995) / 0.044) ** 2) < 1)
+    mat = np.where((m == 8) & inner, INEAR, mat)
+    x, y, z = qb
+    fx = np.abs(x) - 0.225
+    pad = ((fx / 0.042) ** 2 + ((y - 0.11) / 0.036) ** 2 < 1)
+    for o in (-0.042, 0, 0.042):
+        pad |= ((fx - o) / 0.018) ** 2 + ((y - 0.195) / 0.02) ** 2 < 1
+    mat = np.where((m == 7) & (z > 0.37) & pad, PAD, mat)
+    return mat, oid, m, qb, bh
+
+
 def shade_hits(p, ph, rd):
     n = normal(p, ph)
-    _, parts, qp = scene(p, ph, True)
-    m = np.argmin(np.array(parts), axis=0)
-    mat = np.choose(m, [ICET, PDARK, ORANGE, FEET, EYE, BEAR, EYE, EYE])
-    mat = np.where((mat == ICET) & (n[1] < 0.8), ICES, mat)
-    x, y, z = qp
-    white = ((z > 0.0) & ((x / 0.165) ** 2 + ((y - 0.34) / 0.35) ** 2 < 1)) | \
-            ((z > 0.04) & (((np.abs(x) - 0.058) / 0.056) ** 2 + ((y - 0.79) / 0.066) ** 2 < 1))
-    mat = np.where((mat == PDARK) & white, PWHITE, mat)
+    mat, oid, m, qb, bh = classify(p, ph, n)
     dif = np.clip(LIGHT @ n, 0, 1) * shadow(p, ph)
     fil = np.clip(FILL @ n, 0, 1)
     amb = 0.5 + 0.5 * n[1]
     rim = (1 - np.clip(-(rd * n).sum(0), 0, 1)) ** 2.5
     lum = (0.25 * amb + 0.8 * dif + 0.15 * fil) * occl(p, n, ph) + 0.45 * rim
-    own = np.where(m == 0, np.where(mat == ICET, 1, 2), np.where(m < 5, 3, 4))
-    return mat, lum, own
+    # soft fur grain on the bear
+    lum = np.where(mat == BEAR, lum * (1 + 0.12 * fur(np.where(m == 8, bh, qb) * 0.7)), lum)
+    return mat, lum, oid
 
 
 def hash2(c, r):
-    v = math.sin(c * 12.9898 + r * 78.233) * 43758.5453
-    return v - math.floor(v)
-
-
-def water(ph):
-    tw = (YW - RO[1]) / RDC[1]
-    x = RO[0] + RDC[0] * tw
-    z = RO[2] + RDC[2] * tw
-    r = np.hypot(x, z)
-    a = -2 * math.pi * ph
-    qx, qz = math.cos(a) * x + math.sin(a) * z, math.cos(a) * z - math.sin(a) * x
-    de = np.max([nx * qx + nz * qz - e - (YT - YW) * math.tan(SLOPE) for nx, nz, e in EDGES], axis=0)
-    # rings move out twice per loop
-    ring = np.cos(2 * math.pi * (de * 6.0 - 2 * ph))
-    out = []
-    for k in range(H * W):
-        rr, cc = divmod(k, W)
-        h = hash2(cc, rr)
-        fade = min(max((1.5 - r[k]) / 0.5, 0), 1)
-        if de[k] < 0.05:
-            out.append(('~', 'e'))
-        elif ring[k] > 0.72 and h < fade:
-            out.append(('~' if r[k] < 1.15 else '-', 'k'))
-        elif ring[k] > 0.1 and h < 0.2 * fade:
-            out.append(('.', 'k'))
-        else:
-            out.append((' ', None))
-    return out
+    v = np.sin(c * 12.9898 + r * 78.233) * 43758.5453
+    return v - np.floor(v)
 
 
 def edge_char(gx, gy, ice):
@@ -355,9 +424,226 @@ def cells(a):
     return a.reshape(H, SY, W, SX).transpose(0, 2, 1, 3).reshape(H, W, SX * SY)
 
 
+# sky layout, in cells
+CR, RR = np.meshgrid(np.arange(W), np.arange(H))
+HZ = round(project([0, YW, -2.2])[1])          # where the sea meets the sky
+# cells the animals can ever reach: bear up to its ears, penguin with the flipper out
+BUSY = np.zeros((H, W), bool)
+for a in np.linspace(0, 2 * np.pi, 96, endpoint=False):
+    for top, rad in ((1.12, 0.6), (0.95, 0.76), (0.72, 0.92)):
+        pts = [project([rad * math.cos(a), y, rad * math.sin(a)]) for y in np.linspace(0, top, 24)]
+        for c, r in pts:
+            r = int(round(r))
+            if 0 <= r < H:
+                BUSY[r, max(0, int(c) - 2):int(c) + 3] = True
+for r in range(H):
+    on = np.nonzero(BUSY[r])[0]
+    if len(on):
+        BUSY[r, on[0]:on[-1] + 1] = True
+MOON = (11, 5, 5.5)                            # col, row, radius in columns
+srng = np.random.default_rng(5)
+STARS = []
+while len(STARS) < 24:
+    c, r = int(srng.integers(1, W - 1)), int(srng.integers(0, HZ - 2))
+    mc, mr, mrad = MOON
+    if BUSY[r, c]:
+        continue
+    if math.hypot(c - mc, (r - mr) * CELL) < mrad * 1.9:
+        continue
+    if any(abs(c - a) < 4 and abs(r - b) < 2 for a, b, _, _ in STARS):
+        continue
+    STARS.append((c, r, str(srng.choice(list('..+*.+'))), int(srng.integers(0, 3))))
+RESERVED = np.zeros((H, W), bool)
+for c, r, _, _ in STARS:
+    RESERVED[r, c] = True
+RESERVED |= np.hypot(CR - MOON[0], (RR - MOON[1]) * CELL) < MOON[2] * 1.6
+
+
+def aurora(ph):
+    # curtains: wavy bright lower edge, rays fading up, folds glow, all drifting on the loop
+    t = 2 * math.pi * ph
+    c, r = CR.astype(float), RR.astype(float)
+    inten = np.zeros((H, W))
+    for base, tilt, amp, k1, n1, p1, top, x0, x1, gain in ((13.5, 0.075, 2.2, 0.08, 1, 0.3, 5.5, 18, 96, 1.6),
+                                                          (7.5, 0.04, 1.5, 0.13, -1, 2.1, 3.5, 34, 84, 1.15)):
+        ph1 = c * k1 + n1 * t + p1
+        edge = base - tilt * (c - 20) + amp * np.sin(ph1) + 0.9 * np.sin(c * 0.23 - 2 * t + 2 * p1)
+        h = edge - r
+        band = np.where(h >= 0, np.exp(-h / top), np.exp(h * 2.2))
+        env = np.clip((c - x0) / 9, 0, 1) * np.clip((x1 - c) / 9, 0, 1)
+        ray = (0.5 + 0.5 * np.sin(c * 1.3 + 4 * t + p1)) * (0.55 + 0.45 * np.sin(c * 0.41 - 2 * t + p1))
+        fold = 0.75 + 0.5 * np.abs(np.cos(ph1))
+        inten = np.maximum(inten, gain * band * (0.3 + 0.9 * ray) * env * fold)
+    return np.where(RR < HZ - 2, inten, 0)
+
+
+def moon_cells():
+    out = {}
+    mc, mr, mrad = MOON
+    lm = unit([-0.45, 0.3, 0.85])
+    for r in range(int(mr - mrad / CELL) - 3, int(mr + mrad / CELL) + 4):
+        for c in range(int(mc - mrad) - 4, int(mc + mrad) + 5):
+            # coverage of the cell by the disc, 4x4 samples
+            sub = [((c - 0.375 + i * 0.25 - mc) / mrad, (mr - r + 0.375 - j * 0.25) * CELL / mrad)
+                   for i in range(4) for j in range(4)]
+            cv = sum(math.hypot(x, y) < 1 for x, y in sub) / 16
+            dx, dy = (c - mc) / mrad, (mr - r) * CELL / mrad
+            d = math.hypot(dx, dy)
+            if cv > 0.2:
+                nz = math.sqrt(max(0, 1 - d * d))
+                l = max(0.0, dx * lm[0] + dy * lm[1] + nz * lm[2])
+                mar = any(math.hypot(dx - cx, dy - cy) < cr for cx, cy, cr in
+                          ((-0.3, 0.25, 0.26), (0.3, -0.15, 0.22), (0.12, 0.45, 0.15), (-0.3, -0.42, 0.13)))
+                if cv < 0.85:
+                    ch = '.' if dy > 0.35 else "'" if dy < -0.35 else ':'
+                else:
+                    ch = 'o' if mar and l > 0.3 else ':'
+                l *= 0.75 if mar else 1
+                out[(r, c)] = (ch, 'g' if l > 0.62 else 'f' if l > 0.36 else 'c')
+            elif d < 1.55 and hash2(c, r) < 0.25:
+                out[(r, c)] = ('.', 'k' if d > 1.3 else 'b')
+    return out
+
+
+def world(loc, who, ph, vec=False):
+    # local point (or direction) on the penguin 'p' or on the bear's head 'b' -> world
+    v = np.array(loc, float)[:, None]
+    if who == 'p':
+        q = rotz(v if vec else v - PIV, roll(ph)) + (0 if vec else PIV)
+        q = roty(q, PYAW) + (0 if vec else PP)
+    else:
+        yaw, nod = head_pose(ph)
+        q = roty(rotx(v if vec else v - NECK, nod), yaw) + (0 if vec else NECK)
+        q = roty(q, BYAW) + (0 if vec else BP)
+    return roty(q, spin(ph))[:, 0]
+
+
+def glints(ph):
+    # one bright cell per eye and on the nose, where the light bounces to the camera
+    out = []
+    for loc, rad, who in (((0.058, 0.8, 0.132), 0.036, 'p'), ((-0.058, 0.8, 0.132), 0.036, 'p'),
+                          ((0.074, 0.918, 0.172), 0.03, 'b'), ((-0.074, 0.918, 0.172), 0.03, 'b'),
+                          ((0, 0.85, 0.305), 0.03, 'b')):
+        c = world(loc, who, ph)
+        h = unit(LIGHT + unit(RO - c))
+        cc, rr = project(c + h * rad)
+        out.append((int(round(rr)), int(round(cc))))
+    return out
+
+
+def puffs(ph):
+    # little breath clouds from the beak and the nose, drifting off the way they face
+    out = []
+    for loc, base, who in (((0, 0.72, 0.27), 0.02, 'p'), ((0, 0.83, 0.34), 0.14, 'b')):
+        for k in range(4):
+            age = ((ph - base - k * 0.25) % 1) / 0.16
+            f = world((0, 0, 1), who, ph, True)
+            if age >= 1 or f[2] < -0.3:
+                continue
+            c, r = project(world(loc, who, ph))
+            side = min(max(f[0] * 3, -1), 1)
+            out.append((int(round(c + side * (2 + 11 * age))), int(round(r - 0.5 - 4 * age)), age))
+    return out
+
+
+def background(ph, grid, wcells):
+    t = 2 * math.pi * ph
+    inten = aurora(ph)
+    tw = (YW - RO[1]) / RDC[1]
+    x, z = RO[0] + RDC[0] * tw, RO[2] + RDC[2] * tw
+    rr = np.hypot(x, z)
+    a = -spin(ph)
+    qx, qz = math.cos(a) * x + math.sin(a) * z, math.cos(a) * z - math.sin(a) * x
+    de = np.max([nx * qx + nz * qz - e - (YT - YW) * math.tan(SLOPE) for nx, nz, e in EDGES], axis=0)
+    # rings move out twice per loop
+    ring = np.cos(2 * math.pi * (de * 6.0 - 2 * ph))
+    de, ring, rr = de.reshape(H, W), ring.reshape(H, W), rr.reshape(H, W)
+    hsh = hash2(CR, RR)
+    mc = MOON[0]
+    for r in range(H):
+        for c in range(W):
+            if grid[r][c] is not None:
+                continue
+            if RESERVED[r, c]:
+                grid[r][c] = (' ', None)
+                continue
+            if r < HZ:
+                v = inten[r, c]
+                if v > 0.36:
+                    ch = '.' if v < 0.42 else ':' if v < 0.56 else '|'
+                    grid[r][c] = (ch, 'k' if v < 0.5 else 'd' if v < 0.78 else 'e' if v < 1.0 else 'l')
+                else:
+                    grid[r][c] = (' ', None)
+                continue
+            if (r, c) in wcells:
+                grid[r][c] = wcells[(r, c)]
+                continue
+            fade = min(max((1.6 - rr[r, c]) / 0.5, 0), 1)
+            h = hsh[r, c]
+            gl = abs(c - mc - 1.2 * math.sin(r * 1.9 + 3 * t)) < 1.6 + 0.12 * (r - HZ)
+            if de[r, c] < 0.05:
+                grid[r][c] = ('~', 'e')
+            elif gl and math.sin(r * 2.3 + c * 0.7 - 4 * t) > -0.2:
+                grid[r][c] = ('-' if (r + c) % 3 else '=', 'f' if r < HZ + 6 else 'c')
+            elif ring[r, c] > 0.8 and h < 0.7 * fade:
+                grid[r][c] = ('~' if rr[r, c] < 1.2 else '-', 'k')
+            elif ring[r, c] > 0.1 and h < 0.12 * fade:
+                grid[r][c] = ('.', 'k')
+            elif r == HZ and hash2(c // 3, 7) < 0.6:
+                grid[r][c] = ('_', 'k')
+            elif hash2((c + int(ph * 2 * W)) // 5 % (W // 5 + 1), r) < 0.07 and h < 0.6:
+                grid[r][c] = ('-', 'a')
+            else:
+                grid[r][c] = (' ', None)
+    for c, r, age in puffs(ph):
+        for dc, dr, need in ((0, 0, 0), (1, 0, 0.3), (-1, 0, 0.5), (0, -1, 0.6), (1, -1, 0.75)):
+            cc, r2 = c + dc, r + dr
+            if 0 <= r2 < H and 0 <= cc < W and age >= need and not RESERVED[r2, cc]                     and grid[r2][cc][1] in (None, 'k', 'd', 'e', 'l'):
+                ch = 'o' if dc == dr == 0 and 0.15 < age < 0.7 else '.' if age > 0.8 or dc or dr else 'O' if age < 0.85 else '.'
+                ch = '.' if age < 0.15 else ch
+                grid[r2][cc] = (ch, 'g' if age < 0.45 else 'f' if age < 0.75 else 'c')
+
+
+REFL = {PDARK: 'a', PWHITE: 'c', BEAR: 'c', BEAKU: 'h', BEAKL: 'h', FEET: 'h', ICET: 'k', ICES: 'k',
+        EYE: None, INEAR: 'b', PAD: 'a', NOSE: None}
+
+
+def reflections(ph, cand):
+    # dim, wobbling mirror image of the floe and the animals in the water
+    if not cand:
+        return {}
+    idx = np.array([r * W + c for r, c in cand])
+    d = RDC[:, idx]
+    p = RO[:, None] + d * ((YW - RO[1]) / d[1])
+    t = 2 * math.pi * ph
+    sx = 0.06 * np.sin(29 * p[2] + 3 * t + 2 * p[0]) + 0.03 * np.sin(47 * p[2] - 5 * t)
+    sz = 0.03 * np.sin(19 * p[0] - 2 * t + 6 * p[2])
+    nn = np.stack([-sx, np.ones_like(sx), -sz])
+    nn /= np.linalg.norm(nn, axis=0)
+    rd = d - 2 * (d * nn).sum(0) * nn
+    tt, hit = march(p + rd * 0.004, rd, ph, 45, 0.005)
+    out = {}
+    hi = np.nonzero(hit)[0]
+    if len(hi):
+        q = p[:, hi] + rd[:, hi] * tt[hi]
+        n = normal(q, ph)
+        mat = classify(q, ph, n)[0]
+        lum = 0.3 + 0.7 * np.clip(LIGHT @ n, 0, 1)
+        for k, i in enumerate(hi):
+            cl = REFL[mat[k]]
+            r, c = cand[i]
+            # broken horizontal streaks so it reads as water
+            if cl == 'k':
+                if math.sin(c * 0.45 + r * 2.1 + 3 * t) + hash2(c, r) > 0.6:
+                    out[cand[i]] = ('~', 'k')
+            elif cl:
+                out[cand[i]] = ('-~='[int(lum[k] * 2.99)], cl)
+    return out
+
+
 def render(ph):
     S = SX * SY
-    t, hit = march(RD, ph)
+    t, hit = march(RO[:, None], RD, ph)
     tw = np.where(RD[1] < 0, (YW - RO[1]) / np.minimum(RD[1], -1e-9), np.inf)
     obj = hit & (t < tw)
     n = RD.shape[1]
@@ -370,18 +656,20 @@ def render(ph):
     G = oid.reshape(H * SY, W * SX)
     Z = np.where(obj, t, 99).reshape(H * SY, W * SX)
     E = np.zeros(G.shape, bool)
+    A = ANIMAL[G]
     for sh in ((0, 1), (0, -1), (1, 0), (-1, 0)):
         nb, nz = np.roll(G, sh, (0, 1)), np.roll(Z, sh, (0, 1))
-        E |= (G >= 3) & (nb != G) & (nz > Z + 0.08)
+        gap = np.where(ANIMAL[nb] == A, 0.035, 0.08)
+        E |= (G >= 3) & (nb != G) & (nz > Z + gap)
         if sh != (-1, 0):
             # no outline along the waterline, the foam does that
             E |= (G >= 1) & (G <= 2) & (nb == 0)
         E |= (G == 1) & (nb == 2)
     mat, lum, oid, E = cells(mat), cells(lum), cells(G), cells(E)
-    cov = {k: (oid == k).mean(-1) for k in (1, 2, 3, 4)}
-    gr = {3: grad(cov[3]), 4: grad(cov[4]), 1: grad(cov[1]), 0: grad(cov[1] + cov[2])}
-    wat = water(ph)
-    grid = []
+    cov = {k: (oid == k).mean(-1) for k in range(1, 7)}
+    gr = {k: grad(cov[k]) for k in (3, 4, 5, 6, 1)}
+    gr[0] = grad(cov[1] + cov[2])
+    grid, dark = [], set()
     for r in range(H):
         row = []
         for c in range(W):
@@ -389,27 +677,37 @@ def render(ph):
             nobj = (ms > 0).sum()
             if (ms == EYE).sum() >= 2:
                 row.append((' ', None))
+                dark.add((r, c))
                 continue
-            if (ms == ORANGE).sum() >= 2:
-                m = ORANGE
+            if (ms == NOSE).sum() >= 2:
+                row.append(('@', 'a'))
+                dark.add((r, c))
+                continue
+            nb = (ms == BEAKU).sum() + (ms == BEAKL).sum()
+            if nb >= 2:
+                m = BEAKU if (ms == BEAKU).sum() >= (ms == BEAKL).sum() else BEAKL
             elif (ms == FEET).sum() >= 3:
                 m = FEET
+            elif (ms == PAD).sum() >= 3:
+                m = PAD
             elif nobj >= 2 or es.any():
                 vals, cnt = np.unique(ms[ms > 0], return_counts=True)
                 m = vals[np.argmax(cnt)]
             else:
-                row.append(wat[r * W + c])
+                row.append(None)
                 continue
-            l = float(ls[ms == m].mean())
+            if m == EYE:
+                m = PDARK
+            l = float(ls[ms == m].mean()) if (ms == m).any() else 0.5
             if es.any():
-                ow = np.bincount(os_[es], minlength=5)
-                k = 4 if ow[4] else 3 if ow[3] else 1
+                ow = np.bincount(os_[es], minlength=7)
+                k = int(np.argmax(ow[3:])) + 3 if ow[3:].any() else 1
                 if k == 1 and ((os_ == 0).any() or not (os_ == 2).any()):
                     k = 0
                 gx, gy = gr[k][0][r, c], gr[k][1][r, c]
                 if abs(gx) + abs(gy) > 0.05:
                     ch = edge_char(gx, gy, k < 3)
-                    if m == ORANGE:
+                    if m in (BEAKU, BEAKL):
                         row.append(('>' if ch == ')' else '<' if ch == '(' else look(m, l)[0], 'i'))
                         continue
                     em = ms[(os_ == k) if k else (os_ == 1) | (os_ == 2)]
@@ -420,6 +718,12 @@ def render(ph):
             ch, cl = look(m, l, (S - nobj + 1) // 2 if nobj < S else 0)
             row.append((ch, cl if ch != ' ' else None))
         grid.append(row)
+    for rc in glints(ph):
+        if rc in dark:
+            grid[rc[0]][rc[1]] = ("'", 'g')
+    # open water: what the cell sees mirrored
+    cand = [(r, c) for r in range(HZ, H) for c in range(W) if grid[r][c] is None]
+    background(ph, grid, reflections(ph, cand))
     return grid
 
 
@@ -449,11 +753,24 @@ def esc(s):
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
+def static_layer():
+    g = [[(' ', None)] * W for _ in range(H)]
+    for (r, c), v in moon_cells().items():
+        if 0 <= r < H and 0 <= c < W:
+            g[r][c] = v
+    return g
+
+
 def sheet(name, frames):
     out = ['<html><body style="background:#120c1f;margin:8px;display:grid;'
            'grid-template-columns:repeat(2,auto);gap:6px 14px;justify-content:start">']
+    st = static_layer()
+    for c, r, ch, _ in STARS:
+        st[r][c] = (ch, 'f')
     for f in frames:
-        g = [smooth(row, lambda o: 0 if o == 'e' else 20) for row in render(f / NF)]
+        g = render(f / NF)
+        g = [[st[r][c] if st[r][c][1] else g[r][c] for c in range(W)] for r in range(H)]
+        g = [smooth(row, lambda o: 0 if o == 'e' else 20) for row in g]
         rows = []
         for row in g:
             rows.append(''.join(esc(ch) if cl is None else f'<span style="color:{COLORS[cl]}">{esc(ch)}</span>'
@@ -501,9 +818,9 @@ INFO = [('OS', 'Arch Linux x86_64 (btw)'),
 SWATCH = ['#2e1a4f', '#4b2a80', '#6a3bb5', '#8a4fe0', '#a66cff', '#bf8fff', '#d8b8ff', '#f1e6ff']
 
 # snow: x, start phase, speed (falls per loop), char
-srng = np.random.default_rng(11)
-FLAKES = [(srng.uniform(0, 1), srng.uniform(0, 1), int(srng.choice([1, 1, 2])), str(srng.choice(list(".*'+.*"))))
-          for _ in range(20)]
+frng = np.random.default_rng(11)
+FLAKES = [(frng.uniform(0, 1), frng.uniform(0, 1), int(frng.choice([1, 1, 2])), str(frng.choice(list(".*'+.*"))))
+          for _ in range(26)]
 
 
 def num(v):
@@ -531,6 +848,24 @@ def runs(row, tags):
         gap = ''
     flush()
     return ''.join(out)
+
+
+def row_text(row, y, tags, base):
+    # try the row with a few default colours on the <text> itself, keep the shortest
+    cnt = Counter(cl for ch, cl in row if cl)
+    if not cnt:
+        return ''
+    best = None
+    for dflt in [base] + [k for k, _ in cnt.most_common(3) if k != base]:
+        tg = dict(tags)
+        if dflt != base:
+            tg[base] = (f'<a class="{base}">', '</a>')
+            tg[dflt] = ('', '')
+        s = runs(smooth(row, lambda o: len(tg[o][0]) + len(tg[o][1])), tg)
+        s = f'<text y="{y}"' + (f' class="{dflt}"' if dflt != base else '') + f'>{s}</text>'
+        if best is None or len(s) < len(best):
+            best = s
+    return best
 
 
 def gtext(col, y, segs):
@@ -602,7 +937,7 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
     def colour_tags(frs):
         cnt = Counter(cl for g in frs for row in g for ch, cl in row if cl)
         top = [k for k, _ in cnt.most_common()]
-        tags = {k: (f'<tspan class="{k}">', '</tspan>') for k in top}
+        tags = {k: (f'<a class="{k}">', '</a>') for k in COLORS}
         tags[top[0]] = ('', '')
         if len(top) > 1:
             tags[top[1]] = ('<a>', '</a>')
@@ -616,19 +951,41 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
         top, tags = colour_tags(frames)
     stack = []
     for k, g in enumerate(frames):
-        rows = ''.join(f'<text y="{LH - 2 + r * LH}">{s}</text>'
-                       for r, s in enumerate(runs(row, tags) for row in g) if s)
+        rows = ''.join(row_text(row, LH - 2 + r * LH, tags, top[0]) for r, row in enumerate(g))
         stack.append(f'<g transform="translate({SCX} {SCY + k * FH})">{rows}</g>')
 
+    # moon and stars sit still outside the film strip, stars twinkle
+    st = static_layer()
+    still = ''.join(row_text(row, LH - 2 + r * LH, tags, top[0]) for r, row in enumerate(st))
+    for i, (c, r, ch, k) in enumerate(STARS):
+        dur = LOOP / (2, 4, 5)[k]
+        still += (f'<text y="{LH - 2 + r * LH}" class="f t{k}" style="animation-delay:-{num(hash2(i, 3) * dur)}s">'
+                  f'{" " * c}{esc(ch)}</text>')
+
     nf = len(frames)
+    used = set(top)
     css = [f'text{{font-family:{FONT};font-size:13px;fill:#e2d9f3;white-space:pre}}',
            f'.sc text{{font-size:{FS}px;fill:{COLORS[top[0]]}}}',
            f'.sc a{{fill:{COLORS[top[1]]}}}.sc tspan{{fill:{COLORS[top[2]]}}}',
-           ''.join(f'.sc .{k}{{fill:{COLORS[k]}}}' for k in top[3:]),
+           ''.join(f'.sc .{k}{{fill:{COLORS[k]}}}' for k in COLORS if k in used or k in 'fgbck'),
            '.ku{fill:#b07cff;font-weight:700}.cy{fill:#e0a8ff}.dm{fill:#75659a}.wh{fill:#f8f2ff}'
            '.tt{fill:#9d8cbf}.cu{fill:#e2d9f3}',
            f'.fr{{animation:fr {num(LOOP)}s steps({nf}) infinite}}',
            f'@keyframes fr{{to{{transform:translateY(-{nf * FH}px)}}}}']
+    for k in range(3):
+        css.append(f'.t{k}{{animation:t{k} {num(LOOP / (2, 4, 5)[k])}s ease-in-out infinite}}'
+                   f'@keyframes t{k}{{0%,100%{{opacity:1}}50%{{opacity:.2}}}}')
+    # soft glow behind the aurora and the moon
+    css.append(f'.gl{{animation:gl {num(LOOP / 2)}s ease-in-out infinite}}'
+               '@keyframes gl{0%,100%{opacity:.55;transform:translateX(-10px)}50%{opacity:1;transform:translateX(10px)}}')
+    mx, my = SCX + (MOON[0] + 0.5) * FS * 0.58, SCY + (MOON[1] + 0.5) * LH
+    glow = (f'<radialGradient id="ga"><stop offset="0" stop-color="#c060ff" stop-opacity=".2"/>'
+            f'<stop offset=".55" stop-color="#9b4dff" stop-opacity=".08"/><stop offset="1" stop-color="#9b4dff" stop-opacity="0"/></radialGradient>'
+            f'<radialGradient id="gp"><stop offset="0" stop-color="#ff7ad9" stop-opacity=".13"/><stop offset="1" stop-color="#ff7ad9" stop-opacity="0"/></radialGradient>'
+            f'<radialGradient id="gm"><stop offset=".3" stop-color="#e6d6ff" stop-opacity=".16"/><stop offset="1" stop-color="#e6d6ff" stop-opacity="0"/></radialGradient>'
+            f'<circle cx="{num(mx)}" cy="{num(my)}" r="62" fill="url(#gm)"/>'
+            f'<g class="gl"><ellipse cx="{SCX + 300}" cy="{SCY + 95}" rx="230" ry="80" fill="url(#ga)"/>'
+            f'<ellipse cx="{SCX + 330}" cy="{SCY + 110}" rx="150" ry="38" fill="url(#gp)"/></g>')
 
     # snow drifts down on its own, one row per step, same loop as the scene
     fall = (H + 2) * LH
@@ -638,7 +995,7 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
         snow.append(f'<text class="s{k}" x="{num(SCX + fx * W * FS * 0.58)}" y="{SCY - LH}" '
                     f'style="animation-delay:-{num(f0 * dur)}s">{esc(ch)}</text>')
     for k in (1, 2):
-        css.append(f'.s{k}{{fill:#e0ccff;animation:s{k} {num(LOOP / k)}s steps({H + 2}) infinite}}'
+        css.append(f'.s{k}{{fill:#e0ccff;font-size:11px;animation:s{k} {num(LOOP / k)}s steps({H + 2}) infinite}}'
                    f'@keyframes s{k}{{to{{transform:translate(-{18 * k}px,{fall}px)}}}}')
 
     css += ['.bl{animation:bl 1s step-end infinite}@keyframes bl{0%{opacity:1}50%{opacity:0}100%{opacity:0}}',
@@ -674,7 +1031,8 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
            f'<rect x=".5" y=".5" width="{SW - 1}" height="{SH - 1}" rx="12" fill="none" stroke="{LINE}"/>'
            + gtext(0, SCY - 12, prompt('fastfetch'))
            + f'<clipPath id="cs"><rect x="{SCX - 8}" y="{SCY - 2}" width="{PX - SCX - 4}" height="{H * LH + 4}"/></clipPath>'
-           f'<g clip-path="url(#cs)"><g class="sc fr">{"".join(stack)}</g>{"".join(snow)}</g>'
+           f'<g clip-path="url(#cs)">{glow}<g class="sc" transform="translate({SCX} {SCY})">{still}</g>'
+           f'<g class="sc fr">{"".join(stack)}</g>{"".join(snow)}</g>'
            + lg + ''.join(info) + ''.join(bot) + '</svg>')
     with open(path, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write(svg)
