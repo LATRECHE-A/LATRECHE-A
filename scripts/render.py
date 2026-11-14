@@ -262,9 +262,9 @@ MATS = {
 }
 OUTC = {PDARK: 'c', PWHITE: 'f', BEAR: 'g', ICET: 'd', ICES: 'd', ORANGE: 'i', FEET: 'i', EYE: 'a'}
 COLORS = {
-    'a': '#2f5885', 'b': '#4672a3', 'c': '#8fb6e0', 'd': '#1793d1', 'e': '#5cc8ff',
-    'f': '#a9defc', 'g': '#f0f6fc', 'h': '#b8622a', 'i': '#f0883e', 'j': '#ffb27a',
-    'k': '#155d8c',
+    'a': '#4a3478', 'b': '#6a4fa3', 'c': '#ab8fdc', 'd': '#9b5de5', 'e': '#c98bff',
+    'f': '#dcc8ff', 'g': '#f8f2ff', 'h': '#b8622a', 'i': '#f0883e', 'j': '#ffb27a',
+    'k': '#4f2a8a',
 }
 # shades close enough to swap when it saves a colour switch
 SUB = 5   # cost of using a near shade, in bytes
@@ -450,7 +450,7 @@ def esc(s):
 
 
 def sheet(name, frames):
-    out = ['<html><body style="background:#0b1220;margin:8px;display:grid;'
+    out = ['<html><body style="background:#120c1f;margin:8px;display:grid;'
            'grid-template-columns:repeat(2,auto);gap:6px 14px;justify-content:start">']
     for f in frames:
         g = [smooth(row, lambda o: 0 if o == 'e' else 20) for row in render(f / NF)]
@@ -458,8 +458,8 @@ def sheet(name, frames):
         for row in g:
             rows.append(''.join(esc(ch) if cl is None else f'<span style="color:{COLORS[cl]}">{esc(ch)}</span>'
                                 for ch, cl in row))
-        out.append(f'<div><div style="color:#5f6f89;font:11px Consolas">frame {f}</div>'
-                   f'<pre style="font:{FS}px/{LH}px Consolas;margin:0;border:1px solid #1f2a3c">'
+        out.append(f'<div><div style="color:#75659a;font:11px Consolas">frame {f}</div>'
+                   f'<pre style="font:{FS}px/{LH}px Consolas;margin:0;border:1px solid #2e2245">'
                    + '\n'.join(rows) + '</pre></div>')
     out.append('</body></html>')
     with open(os.path.join(HERE, 'previews', name + '.html'), 'w', encoding='utf-8') as fh:
@@ -471,12 +471,14 @@ SW = 960
 FONT = "ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono','DejaVu Sans Mono',monospace"
 SCX, SCY = 24, 76                     # scene origin
 FH = H * LH + 24                      # frame pitch in the stack
-GX, CW = 24, 7.8                      # grid for the typed lines
+GX, CW = 24, 7.8                      # grid for the prompt lines
 PX = 545                              # info panel x
-BY = SCY + H * LH + 32                # first bottom line baseline
-PITCH = 19
-SH = BY + 4 * PITCH + 24
-P = 12.0                              # typing loop
+BY = SCY + H * LH + 32                # last prompt baseline
+SH = BY + 24
+HOST = 'ШАТУН'
+
+# purple everything
+BG, BAR, LINE = '#120c1f', '#1b1230', '#2e2245'
 
 LOGO = [a + b + c + d + e for a, b, c, d, e in zip(
     ['██╗     ', '██║     ', '██║     ', '██║     ', '███████╗', '╚══════╝'],
@@ -490,13 +492,13 @@ BOX = {'═': 'lr', '║': 'ud', '╗': 'ld', '╔': 'rd', '╝': 'lu', '╚': '
 INFO = [('OS', 'Arch Linux x86_64 (btw)'),
         ('Host', 'a laptop that sounds like a jet engine'),
         ('Kernel', 'whatever pacman -Syu gave me today'),
-        ('Uptime', 'since 2024, no reboots'),
+        ('Uptime', 'since 2022, no reboots'),
         ('Packages', 'too many (pacman)'),
-        ('Editor', 'neovim'),
-        ('Langs', 'TypeScript, PHP, Python, Rust, Java'),
+        ('Editor', 'vim'),
+        ('Langs', 'Assembly, C, C++, PHP, Python, Rust, Java'),
         ('Pets', '1 penguin, 1 polar bear'),
         ('Bio', ';')]
-SWATCH = ['#5f6f89', '#ff7b72', '#7ee787', '#e3b341', '#1793d1', '#d2a8ff', '#5cc8ff', '#f0f6fc']
+SWATCH = ['#2e1a4f', '#4b2a80', '#6a3bb5', '#8a4fe0', '#a66cff', '#bf8fff', '#d8b8ff', '#f1e6ff']
 
 # snow: x, start phase, speed (falls per loop), char
 srng = np.random.default_rng(11)
@@ -540,15 +542,7 @@ def gtext(col, y, segs):
 
 
 def prompt(cmd=''):
-    return [('lth-a', 'ku'), ('@archlinux', None), (' ~', 'cy'), (' $ ', 'dm')] + ([(cmd, 'wh')] if cmd else [])
-
-
-def pc(t):
-    return num(t / P * 100) + '%'
-
-
-def kf(name, pts):
-    return f'@keyframes {name}{{' + ''.join(f'{pc(t)}{{{v}}}' for t, v in pts) + '}'
+    return [('lth-a', 'ku'), ('@' + HOST, None), (' ~', 'cy'), (' $ ', 'dm')] + ([(cmd, 'wh')] if cmd else [])
 
 
 def logo_svg(x0, y0, cw=8.4, ch=14.5):
@@ -585,8 +579,8 @@ def logo_svg(x0, y0, cw=8.4, ch=14.5):
     w, h = len(LOGO[0]) * cw, 6 * ch
     svg = (f'<clipPath id="lc">{"".join(rects)}</clipPath>'
            f'<linearGradient id="lg" gradientUnits="userSpaceOnUse" x1="{x0}" y1="0" x2="{num(x0 + w)}" y2="0">'
-           f'<stop offset="0" stop-color="#1793d1"/><stop offset=".6" stop-color="#5cc8ff"/>'
-           f'<stop offset="1" stop-color="#a9e4ff"/></linearGradient>'
+           f'<stop offset="0" stop-color="#7b2ff7"/><stop offset=".6" stop-color="#b56cff"/>'
+           f'<stop offset="1" stop-color="#f0b8ff"/></linearGradient>'
            f'<linearGradient id="hl"><stop offset="0" stop-color="#fff" stop-opacity="0"/>'
            f'<stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>'
            f'</linearGradient>'
@@ -627,12 +621,12 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
         stack.append(f'<g transform="translate({SCX} {SCY + k * FH})">{rows}</g>')
 
     nf = len(frames)
-    css = [f'text{{font-family:{FONT};font-size:13px;fill:#c9d4e5;white-space:pre}}',
+    css = [f'text{{font-family:{FONT};font-size:13px;fill:#e2d9f3;white-space:pre}}',
            f'.sc text{{font-size:{FS}px;fill:{COLORS[top[0]]}}}',
            f'.sc a{{fill:{COLORS[top[1]]}}}.sc tspan{{fill:{COLORS[top[2]]}}}',
            ''.join(f'.sc .{k}{{fill:{COLORS[k]}}}' for k in top[3:]),
-           '.ku{fill:#1793d1;font-weight:700}.cy{fill:#5cc8ff}.dm{fill:#5f6f89}.wh{fill:#f0f6fc}'
-           '.yl{fill:#e3b341;font-weight:700}.bo{fill:#f0f6fc;font-weight:700}.tt{fill:#7d8ca6}.cu{fill:#c9d4e5}',
+           '.ku{fill:#b07cff;font-weight:700}.cy{fill:#e0a8ff}.dm{fill:#75659a}.wh{fill:#f8f2ff}'
+           '.tt{fill:#9d8cbf}.cu{fill:#e2d9f3}',
            f'.fr{{animation:fr {num(LOOP)}s steps({nf}) infinite}}',
            f'@keyframes fr{{to{{transform:translateY(-{nf * FH}px)}}}}']
 
@@ -644,79 +638,24 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
         snow.append(f'<text class="s{k}" x="{num(SCX + fx * W * FS * 0.58)}" y="{SCY - LH}" '
                     f'style="animation-delay:-{num(f0 * dur)}s">{esc(ch)}</text>')
     for k in (1, 2):
-        css.append(f'.s{k}{{fill:#a9defc;animation:s{k} {num(LOOP / k)}s steps({H + 2}) infinite}}'
+        css.append(f'.s{k}{{fill:#e0ccff;animation:s{k} {num(LOOP / k)}s steps({H + 2}) infinite}}'
                    f'@keyframes s{k}{{to{{transform:translate(-{18 * k}px,{fall}px)}}}}')
 
-    # typing timeline (seconds inside the P loop)
-    cmd = 'sudo pacman -S polar-bear'
-    ask = ':: Proceed with installation anyway? [Y/n] '
-    head = '(1/1) installing polar-bear     ['
-    t0, cps = 0.6, 0.075
-    t1 = t0 + len(cmd) * cps
-    te = t1 + 0.5
-    tl2, tl3 = te + 0.15, te + 0.55
-    ty = tl3 + 1.2
-    te2 = ty + 0.35
-    tl4 = te2 + 0.2
-    tb0, tb1 = tl4 + 0.25, tl4 + 2.75
-    tl5 = tb1 + 0.45
-
-    def tx(px):
-        return f'transform:translateX({num(px)}px)'
-
-    def tyy(px):
-        return f'transform:translateY({num(px)}px)'
-
-    css += [f'.ty1{{animation:ty1 {num(P)}s steps({len(cmd)}) infinite}}',
-            kf('ty1', [(0, tx(0)), (t0, tx(0)), (t1, tx(len(cmd) * CW)), (P, tx(len(cmd) * CW))]),
-            f'.c1,.c3,.l2,.l3,.l4,.l5,.ty3{{animation:c1 {num(P)}s step-end infinite}}',
-            '.c3{animation-name:c3}.l2{animation-name:l2}.l3{animation-name:l3}'
-            '.l4{animation-name:l4}.l5{animation-name:l5}.ty3{animation-name:ty3}',
-            kf('c1', [(0, 'opacity:1'), (te, 'opacity:0'), (P, 'opacity:0')]),
-            kf('c3', [(0, 'opacity:1'), (te2, 'opacity:0'), (P, 'opacity:0')]),
-            kf('ty3', [(0, tx(0)), (ty, tx(CW)), (P, tx(CW))])]
-    for n, t in (('l2', tl2), ('l3', tl3), ('l4', tl4), ('l5', tl5)):
-        css.append(kf(n, [(0, 'opacity:0'), (t, 'opacity:1'), (P, 'opacity:1')]))
-    css += [f'.br{{animation:br {num(P)}s steps(20) infinite}}',
-            kf('br', [(0, tx(0)), (tb0, tx(0)), (tb1, tx(20 * CW)), (P, tx(20 * CW))]),
-            f'.pt{{animation:pt {num(P)}s steps(20) infinite}}',
-            kf('pt', [(0, tyy(0)), (tb0, tyy(0)), (tb1, tyy(-20 * PITCH)), (P, tyy(-20 * PITCH))]),
-            '.bl{animation:bl 1s step-end infinite}@keyframes bl{0%{opacity:1}50%{opacity:0}100%{opacity:0}}',
+    css += ['.bl{animation:bl 1s step-end infinite}@keyframes bl{0%{opacity:1}50%{opacity:0}100%{opacity:0}}',
             '.sh{animation:sh 7s ease-in-out infinite}'
             '@keyframes sh{0%{transform:translateX(0)}40%{transform:translateX(450px)}100%{transform:translateX(450px)}}']
 
-    def cover(col, y, n):
-        return f'<rect x="{num(GX + col * CW)}" y="{y - 13}" width="{num(n * CW + 2)}" height="18" fill="#0b1220"/>'
-
-    def cursor(col, y, cls='cu'):
-        return f'<rect class="{cls}" x="{num(GX + col * CW + 0.5)}" y="{y - 11}" width="{num(CW - 1)}" height="14"/>'
-
-    y1, y2, y3, y4, y5 = (BY + i * PITCH for i in range(5))
     pre = len(''.join(t for t, _ in prompt()))
-    bar = len(head)
-    bot = [gtext(0, y1, prompt(cmd)),
-           f'<g class="ty1">{cover(pre, y1, len(cmd))}<g class="c1">{cursor(pre, y1)}</g></g>',
-           '<g class="l2">' + gtext(0, y2, [('warning:', 'yl'),
-                                           (' polar-bear lives at the north pole, penguin lives at the south pole', None)])
-           + '</g>',
-           '<g class="l3">' + gtext(0, y3, [('::', 'ku'), (ask[2:], 'bo'), ('y', None)])
-           + f'<g class="ty3">{cover(len(ask), y3, 1)}<g class="c3">{cursor(len(ask), y3, "cu bl")}</g></g></g>',
-           f'<clipPath id="cb"><rect x="{num(GX + bar * CW)}" y="{y4 - 13}" width="{num(20 * CW)}" height="18"/></clipPath>'
-           f'<clipPath id="cp"><rect x="{num(GX + (bar + 22) * CW - 1)}" y="{y4 - 14}" '
-           f'width="{num(4 * CW + 2)}" height="{PITCH}"/></clipPath>'
-           '<g class="l4">' + gtext(0, y4, [(head, None), ('#' * 20, 'cy'), (']', None)])
-           + f'<g clip-path="url(#cb)"><g class="br">{cover(bar, y4, 20)}{gtext(bar, y4, [("-" * 20, "dm")])}</g></g>'
-           '<g clip-path="url(#cp)"><g class="pt">'
-           + ''.join(gtext(bar + 22, y4 + i * PITCH, [(f'{i * 5:3d}%', None)]) for i in range(21)) + '</g></g></g>',
-           '<g class="l5">' + gtext(0, y5, prompt()) + cursor(pre, y5, 'cu bl') + '</g>']
+    bot = [gtext(0, BY, prompt()),
+           f'<rect class="cu bl" x="{num(GX + pre * CW + 0.5)}" y="{BY - 11}" width="{num(CW - 1)}" height="14"/>']
 
     # info panel, vertically centred on the scene
     ph = 6 * 14.5 + 34 + 40 + len(INFO) * 20 + 10
     top_y = SCY + (H * LH - ph) // 2
     lg, lw, lh = logo_svg(PX, top_y)
     iy = top_y + lh + 34
-    info = [f'<text x="{PX}" y="{iy}"><tspan class="ku">lth-a</tspan>@<tspan class="ku">github</tspan></text>',
-            f'<text x="{PX}" y="{iy + 20}">------------</text>']
+    info = [f'<text x="{PX}" y="{iy}"><tspan class="ku">lth-a</tspan>@<tspan class="ku">{HOST}</tspan></text>',
+            f'<text x="{PX}" y="{iy + 20}">{"-" * (6 + len(HOST))}</text>']
     for i, (k, v) in enumerate(INFO):
         info.append(f'<text x="{PX}" y="{iy + 40 + i * 20}"><tspan class="ku">{k}:</tspan> {esc(v)}</text>')
     sy = iy + 40 + len(INFO) * 20 - 6
@@ -724,15 +663,15 @@ def build(ids=range(NF), path=os.path.join(HERE, '..', 'assets', 'terminal.svg')
              for i, c in enumerate(SWATCH)]
 
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{SW}" height="{SH}" viewBox="0 0 {SW} {SH}" '
-           f'xml:space="preserve" role="img" aria-label="lth-a running fastfetch on arch">'
+           f'xml:space="preserve" role="img" aria-label="lth-a running fastfetch on arch, a penguin and a polar bear on an ice floe">'
            f'<style>{"".join(css)}</style>'
-           f'<rect x=".5" y=".5" width="{SW - 1}" height="{SH - 1}" rx="12" fill="#0b1220"/>'
-           f'<path d="M.5 34V12.5A12 12 0 0 1 12.5 .5H947.5A12 12 0 0 1 959.5 12.5V34Z" fill="#111a2b"/>'
-           f'<path d="M.5 34.5H959.5" stroke="#1f2a3c"/>'
+           f'<rect x=".5" y=".5" width="{SW - 1}" height="{SH - 1}" rx="12" fill="{BG}"/>'
+           f'<path d="M.5 34V12.5A12 12 0 0 1 12.5 .5H947.5A12 12 0 0 1 959.5 12.5V34Z" fill="{BAR}"/>'
+           f'<path d="M.5 34.5H959.5" stroke="{LINE}"/>'
            f'<circle cx="20" cy="17" r="6" fill="#ff5f57"/><circle cx="40" cy="17" r="6" fill="#febc2e"/>'
            f'<circle cx="60" cy="17" r="6" fill="#28c840"/>'
-           f'<text x="480" y="21.5" text-anchor="middle" class="tt">lth-a@archlinux: ~</text>'
-           f'<rect x=".5" y=".5" width="{SW - 1}" height="{SH - 1}" rx="12" fill="none" stroke="#1f2a3c"/>'
+           f'<text x="480" y="21.5" text-anchor="middle" class="tt">lth-a@{HOST}: ~</text>'
+           f'<rect x=".5" y=".5" width="{SW - 1}" height="{SH - 1}" rx="12" fill="none" stroke="{LINE}"/>'
            + gtext(0, SCY - 12, prompt('fastfetch'))
            + f'<clipPath id="cs"><rect x="{SCX - 8}" y="{SCY - 2}" width="{PX - SCX - 4}" height="{H * LH + 4}"/></clipPath>'
            f'<g clip-path="url(#cs)"><g class="sc fr">{"".join(stack)}</g>{"".join(snow)}</g>'

@@ -29,21 +29,14 @@ jobs:
         with:
           github_user_name: ${{ github.repository_owner }}
           outputs: |
-            dist/snake.svg?color_snake=#1793d1&color_dots=#ebedf0,#bfdcf0,#7cb3dc,#2f6ea6,#123c63
-            dist/snake-dark.svg?color_snake=#1793d1&color_dots=#161b22,#0c2a44,#11436b,#19639a,#7fd3ff
-
-      - name: Stats
-        run: python3 scripts/stats.py dist/stats.svg
-        env:
-          # optional secret, a token that can read private repos makes them count too
-          STATS_TOKEN: ${{ secrets.STATS_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            dist/snake.svg?color_snake=#d946ef&color_dots=#ebedf0,#e2d1fb,#c19af5,#9254de,#5b21b6
+            dist/snake-dark.svg?color_snake=#f5b8ff&color_dots=#161b22,#2a1650,#46237f,#6a35b8,#a66cff
 
       - name: Push to output
         uses: crazy-max/ghaction-github-pages@1d6ee9b181a81033a16bd707a1401afa978daab4 # v5.0.0
         with:
           target_branch: output
           build_dir: dist
-          commit_message: update stats and snake
+          commit_message: update snake
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
