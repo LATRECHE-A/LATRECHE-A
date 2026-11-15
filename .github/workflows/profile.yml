@@ -25,12 +25,11 @@ jobs:
           persist-credentials: false
 
       - name: Snake
-        uses: Platane/snk/svg-only@d8f6715049803e982ee5ff501b6b9b7d5deeb09b # v3.5.0
-        with:
-          github_user_name: ${{ github.repository_owner }}
-          outputs: |
-            dist/snake.svg?color_snake=#d946ef&color_dots=#ebedf0,#e2d1fb,#c19af5,#9254de,#5b21b6
-            dist/snake-dark.svg?color_snake=#f5b8ff&color_dots=#161b22,#2a1650,#46237f,#6a35b8,#a66cff
+        run: |
+          mkdir -p dist
+          python3 scripts/snake.py dist/snake.svg dist/snake-dark.svg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push to output
         uses: crazy-max/ghaction-github-pages@1d6ee9b181a81033a16bd707a1401afa978daab4 # v5.0.0

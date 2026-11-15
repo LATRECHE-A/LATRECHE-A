@@ -6,6 +6,6 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/LATRECHE-A/LATRECHE-A/output/snake-dark.svg" />
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/LATRECHE-A/LATRECHE-A/output/snake.svg" />
-    <img src="https://raw.githubusercontent.com/LATRECHE-A/LATRECHE-A/output/snake.svg" width="100%" alt="A purple snake eating its way through my contribution graph" />
+    <img src="https://raw.githubusercontent.com/LATRECHE-A/LATRECHE-A/output/snake.svg" width="100%" alt="A purple snake slithering through my contribution graph and eating every commit" />
   </picture>
 </p>
